@@ -3501,7 +3501,7 @@ dependencies = [
 [[package]]
 name = "mpp"
 version = "0.16.0"
-source = "git+https://github.com/tempoxyz/mpp-rs?rev=d3b400a53eb9b67e49d8e112808a941d0be4fa3b#d3b400a53eb9b67e49d8e112808a941d0be4fa3b"
+source = "git+https://github.com/tempoxyz/mpp-rs?rev=9cb4046091d336492dd0828fa072ebbcbdae3fcb#9cb4046091d336492dd0828fa072ebbcbdae3fcb"
 dependencies = [
  "alloy",
  "async-trait",

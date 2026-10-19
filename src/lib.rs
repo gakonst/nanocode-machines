@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Duration};
 
 use http::{
     HeaderMap, HeaderName, HeaderValue,
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, RETRY_AFTER},
+    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, RETRY_AFTER, WWW_AUTHENTICATE},
 };
 use mpp::client::{
     AcceptPaymentPolicy, ClientEvents, DEFAULT_MAX_PAYMENT_RETRIES, Fetch, PaymentProvider,
@@ -36,6 +36,7 @@ pub const OPENAI_API_BASE_URL: &str = "https://openai.mpp.tempo.xyz/v1";
 pub const ANTHROPIC_MESSAGES_URL: &str = "https://anthropic.mpp.tempo.xyz/v1/messages";
 
 const TURN_STATE_HEADER: &str = "x-codex-turn-state";
+pub const PREPAID_REQUESTS: u32 = 2;
 
 #[derive(Clone)]
 pub struct MppTransport<P> {
@@ -88,6 +89,45 @@ impl<P: PaymentProvider + 'static> MppTransport<P> {
         &self.provider
     }
 
+    pub async fn preconnect(&self, endpoint: &str, model: &str) -> Result<(), String> {
+        let response = self
+            .client
+            .post(endpoint)
+            .header(CONTENT_TYPE, "application/json")
+            .body(serde_json::json!({ "model": model }).to_string())
+            .send()
+            .await
+            .map_err(|error| error.to_string())?;
+        let challenges: Vec<_> = mpp::protocol::core::parse_www_authenticate_all_bytes(
+            response
+                .headers()
+                .get_all(WWW_AUTHENTICATE)
+                .iter()
+                .map(HeaderValue::as_bytes),
+        )
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|challenge| {
+            self.provider
+                .supports(challenge.method.as_str(), challenge.intent.as_str())
+        })
+        .collect();
+        let candidates: Vec<_> = challenges.iter().collect();
+        let (Some(session), Some(challenge)) =
+            (&self.session, self.provider.select_challenge(&candidates))
+        else {
+            return Ok(());
+        };
+        if challenge.intent.as_str() != "session" {
+            return Ok(());
+        }
+        session
+            .restore(challenge)
+            .await
+            .map(drop)
+            .map_err(|error| error.to_string())
+    }
+
     pub fn openai(&self) -> nanocode::codex::OpenAiBuilder {
         OpenAi::builder(OpenAiAuth::gateway_managed())
             .api_base_url(OPENAI_API_BASE_URL)
@@ -134,7 +174,9 @@ pub fn tempo_sessions(
         path: None,
         request_url: Some(service.to_string()),
     })?;
-    Ok(wallet.with_session_store(Arc::new(store)))
+    Ok(wallet
+        .with_session_store(Arc::new(store))
+        .with_session_prepaid_requests(PREPAID_REQUESTS))
 }
 
 impl<P: PaymentProvider + 'static> HostTransport for MppTransport<P> {
