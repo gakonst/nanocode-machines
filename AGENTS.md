@@ -28,7 +28,7 @@ Since T12 (mainnet 2026-10-13), TIP-1095 checks a TIP-1034 channel's TIP-403 pol
   - `live`: real proxies with a provider that declines to pay.
   - `timing PREFERRED N`: phase timings from `ClientEvents` for tiny real requests.
   - `paid PREFERRED BACKEND DEPOSIT PROMPT...`: real agent turns through `MppTransport` with a memory durability store.
-  - `openraw PREFERRED`: one paid OpenAI request without `MppTransport`, printing the server's status and problem details and rolling back a rejected payment.
+  - `openraw PREFERRED [N]`: N sequential paid OpenAI requests without `MppTransport`, printing the 402, payment, header and first-byte times with the proxy's `Server-Timing`, and the problem details of a rejected payment, which it rolls back.
 
   Real modes spend the wallet's funds; run them only with the wallet owner's approval.
 - 2026-10-19 mainnet results with wallet `0x9759…e122` and its P-256 access key:
@@ -37,4 +37,5 @@ Since T12 (mainnet 2026-10-13), TIP-1095 checks a TIP-1034 channel's TIP-403 pol
   - After mpp-rs reused RPC connections, challenge-to-credential time for MACH charges fell from 1.11–1.18 s to 0.25–0.31 s.
   - An unpaid 402 from the proxy took 0.5–3 s, and `/.well-known/mpp` took 0.5–0.8 s.
   - MACH sessions opened sponsored 0.30 MACH channels for Codex and Claude and completed turns, spending 0.051685 and 0.148863 MACH. The wallet's MACH balance fell by exactly the two deposits.
+  - Proxy time (`mpp;dur`) for a warm paid session request fell from 1263 ms to 178–199 ms after tempoxyz/mpp-proxy#397, #399 and #400. What remains is the forced on-chain channel read (80–110 ms to `rpc.tempo.xyz`) and one Durable Object compare-and-swap (~60 ms). A warm voucher takes 4–16 ms on the client; the first payment in a process restores the channel from SQLite and chain state.
 - Keep logs and validation artifacts in ignored `output/`. Never commit wallet stores, channel databases or credentials.
