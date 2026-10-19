@@ -1,9 +1,13 @@
-use std::process::ExitCode;
+use std::{
+    process::ExitCode,
+    sync::{Arc, OnceLock},
+};
 
 use mpp::{
     client::{
         AcceptPaymentPolicy, ClientEvents, DEFAULT_MAX_PAYMENT_RETRIES, Exchange, FlowError,
-        TempoAccountsProvider, TempoSessionProvider,
+        ForwardProxy, TempoAccountsProvider, TempoSessionProvider,
+        directory::{self, MPP_DIRECTORY_URL},
     },
     protocol::methods::tempo::{CHAIN_ID, machine_token},
 };
@@ -30,16 +34,12 @@ struct Mpp {
 
 impl Mpp {
     fn new(wallet: &TempoAccountsProvider, service: &str, deposit: u128) -> Result<Self> {
-        let wallet = wallet
-            .clone()
-            .with_sqlite_session_store(&service.parse()?)?
-            .with_session_prepaid_requests(PREPAID_REQUESTS)
-            .with_session_default_deposit(deposit)
-            .with_session_top_up_amount(deposit);
+        let wallet = sessions(wallet, &service.parse()?, deposit)?;
         Ok(Self {
             session: wallet.session()?,
             wallet,
             client: reqwest::Client::builder()
+                .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
         })
@@ -165,6 +165,46 @@ impl Exchange for NextExchange<'_> {
     }
 }
 
+fn sessions(
+    wallet: &TempoAccountsProvider,
+    service: &reqwest::Url,
+    deposit: u128,
+) -> Result<TempoAccountsProvider> {
+    Ok(wallet
+        .clone()
+        .with_sqlite_session_store(service)?
+        .with_session_prepaid_requests(PREPAID_REQUESTS)
+        .with_session_default_deposit(deposit)
+        .with_session_top_up_amount(deposit))
+}
+
+fn tool_payments(wallet: &TempoAccountsProvider, deposit: u128) -> Result<Arc<OnceLock<String>>> {
+    let mut models = Vec::new();
+    for url in [OPENAI, ANTHROPIC] {
+        models.extend(reqwest::Url::parse(url)?.host_str().map(str::to_owned));
+    }
+    let tools = wallet.clone();
+    let proxy = ForwardProxy::bind(move |url| sessions(&tools, url, deposit))?.bypass(models);
+    for (name, value) in proxy.environment() {
+        unsafe { std::env::set_var(name, value) };
+    }
+    let failure = Arc::new(OnceLock::new());
+    let (client, failed) = (
+        reqwest::Client::builder().no_proxy().build()?,
+        failure.clone(),
+    );
+    proxy.spawn(async move {
+        match directory::service_urls(&client, MPP_DIRECTORY_URL).await {
+            Ok(services) => AcceptPaymentPolicy::Origins(services),
+            Err(error) => {
+                let _ = failed.set(error.to_string());
+                AcceptPaymentPolicy::Never
+            }
+        }
+    })?;
+    Ok(failure)
+}
+
 fn mach(amount: u128) -> String {
     format!("{}.{:06}", amount / MACH, amount % MACH)
 }
@@ -183,6 +223,7 @@ fn clients() -> Result<ModelClients> {
         .with_preferred_currency(
             machine_token::token(CHAIN_ID).ok_or("MACH is not deployed on Tempo mainnet")?,
         );
+    let failure = tool_payments(&wallet, deposit)?;
     let openai = Mpp::new(&wallet, OPENAI, deposit)?;
     let claude = Mpp::new(&wallet, ANTHROPIC, deposit)?;
     let meters = [("openai", openai.clone()), ("anthropic", claude.clone())];
@@ -204,6 +245,11 @@ fn clients() -> Result<ModelClients> {
             let parts: Vec<_> = meters
                 .iter()
                 .filter_map(|(name, mpp)| mpp.status(name))
+                .chain(
+                    failure
+                        .get()
+                        .map(|error| format!("tool payments off: {error}")),
+                )
                 .collect();
             (!parts.is_empty()).then(|| parts.join(" | "))
         }))
