@@ -3,16 +3,32 @@
 MPP-paid model transports for Nanocode agents. Model requests are paid per request through [mpp-rs](https://github.com/tempoxyz/mpp-rs) instead of a ChatGPT or Claude subscription login, and Nanocode itself carries no payment code.
 
 - `MppTransport<P>` implements Nanocode's public transport traits: `nanocode::codex::transport::host::HostTransport` for HTTPS Responses and `nanocode::claude::transport::HttpTransport` for Messages. Nanocode applies them through `OpenAiBuilder::host_transport` and `ClaudeClient::with_transport`; there is no plugin registry. Keep payment logic here and keep Nanocode changes limited to provider-neutral transport contracts.
-- `P` is any `mpp::client::PaymentProvider`. Each request goes through mpp-rs's 402 flow: the first send returns challenges, the provider pays, and the same body is resent with the credential. Responses over MPP are HTTPS with full history replay; native host transports reject WebSocket.
-- `tempo_sessions` attaches mpp-rs's MPPx-compatible SQLite channel store (`$TEMPO_HOME/wallet/channels.db`, default `~/.tempo/wallet/channels.db`) namespaced by the service origin, so each service reuses its session channel across processes. Deposit, top-up and maximum deposit are caller policy set with mpp-rs's `with_session_*` builders; the proxies send no `suggestedDeposit`, so a session needs a default or maximum deposit.
-- `OPENAI_API_BASE_URL` and `ANTHROPIC_MESSAGES_URL` are the `serviceUrl` entries for `openai` and `anthropic` in https://mpp.dev/api/services. On 2026-10-19 both offered `tempo/session` in USDC.e with `unitType: request`, plus `tempo/charge` in USDC.e and pathUSD with `machineTokenEnabled`. `TempoAccountsProvider` with a session store sends `Accept-Payment: tempo/session, tempo/charge;q=0.5`, so sessions are selected.
+- `P` is any `mpp::client::PaymentProvider`. Each request goes through mpp-rs's 402 flow: the first send returns challenges, the provider pays, and the same body is resent with the credential. Responses over MPP are HTTPS with full history replay; native host transports reject WebSocket. `events` forwards mpp-rs `ClientEvents` for payment observability.
+- `tempo_sessions` attaches mpp-rs's MPPx-compatible SQLite channel store (`$TEMPO_HOME/wallet/channels.db`, default `~/.tempo/wallet/channels.db`) namespaced by service origin, so each service reuses its channel across processes. Deposit, top-up and maximum deposit are caller policy set with mpp-rs's `with_session_*` builders; the proxies send no `suggestedDeposit`. Pass the provider's `session()` to `MppTransport::session`.
+- Metered session responses are mppx SSE streams. `src/stream.rs` answers `payment-need-voucher` events with `send_voucher`, reports streamed acceptance through `acknowledge_accepted` so pending opens resolve, removes both payment events, and strips mppx's generic `event: message` name so parsers that check event names against data types, such as Claude's, read the upstream `type`.
+- Funding preference is `TempoAccountsProvider::with_preferred_currency`. With MACH preferred, a TIP-1034 session denominated in MACH wins, then a machine-token-enabled charge paid with MACH through the canonical swapper, then the first offer in Accept-Payment order (sessions before charges). This mirrors Mercator's MACH-first charge ordering.
+- `OPENAI_API_BASE_URL` and `ANTHROPIC_MESSAGES_URL` are the `serviceUrl` entries for `openai` and `anthropic` in https://mpp.dev/api/services. On 2026-10-19 both offered `tempo/session` in USDC.e with `unitType: request`, plus `tempo/charge` in USDC.e and pathUSD with `machineTokenEnabled`.
 - The default `AcceptPaymentPolicy::Always` applies because the transport only receives the model endpoints configured on Nanocode; redirects are disabled. Request failures are reconnectable and payment failures are not. A retried model request pays for its own unit again.
-- MACH: mpp-rs pays a charge through the canonical machine-token route when a challenge sets `machineTokenEnabled` and the wallet holds that token. mpp 0.15.1 pins MPPC (`0x20C0000000000000000000003793c39601711f19`, swapper `0xC6D32f013E0fA3e83B63Dc680E99826761595732`), while mppx and the MACH deployment use MACH (`0x20c000000000000000000000f37de3740ADec032`, swapper `0xF72E5107c32C655ffA7539a3C8e97B7C3cE16A3F` on mainnet). MACH-funded charges need that mpp-rs update. MACH sessions need a merchant session route on the MACH swapper; `sessionRouteFor` returned none for the MPP proxy recipient `0xca4e835F803cB0b7C428222B3A3B98518d4779Fe` on 2026-10-19.
+
+## MACH sessions
+
+Since T12 (mainnet 2026-10-13), TIP-1095 checks a TIP-1034 channel's TIP-403 policy on the logical payer-to-payee path and refunds the payer without it. A MACH session is therefore an ordinary TIP-1034 channel in MACH to a payee on MACH's recipient policy 582. On mainnet, simulating `open` for a MACH channel reverts with `PolicyForbids` for the MPP proxy payee `0xca4e835F803cB0b7C428222B3A3B98518d4779Fe` and succeeds for Mercator, which is on the policy. The proxy offers MACH sessions only after tempoxyz/mach#93 adds its payee to the policy and tempoxyz/mpp-proxy#394 is deployed with `MACH_SESSIONS=true`. A MACH channel cannot pay its own gas, so unsponsored opens need `with_session_fee_token`.
 
 ## Development
 
 - Do not add code comments, doc comments, README files, tests or test-only dependencies. The user maintains README files.
-- Nanocode is pinned by git revision; bump it when the transport traits change. If cargo cannot fetch the revision, set `CARGO_NET_GIT_FETCH_WITH_CLI=true`.
+- Nanocode and mpp-rs are pinned by git revision. mpp-rs points at `gakonst/mpp-rs` branch `mach-sessions` until tempoxyz/mpp-rs#581 is released. Bump the pins when the transport traits change. If cargo cannot fetch a revision, set `CARGO_NET_GIT_FETCH_WITH_CLI=true`.
 - Check with `cargo fmt --check`, `cargo check --examples` and `cargo clippy --all-targets`.
-- Never send a paid request without the wallet owner's approval. Validate without spending through the ignored consumer in `output/validation`: `cargo run` serves a local 402 challenge to a mock provider and expects one unpaid and one paid request per backend, and `cargo run -- live` sends real requests to the MPP proxies with a provider that records the selected challenge and declines to pay. On 2026-10-19 both backends completed through the local flow and selected `tempo/session` live.
+- The consumer in ignored `output/validation` has these modes:
+  - `cargo run`: a local 402 mock with a mock provider. Expect one unpaid and one paid request per backend.
+  - `live`: real proxies with a provider that declines to pay.
+  - `timing PREFERRED N`: phase timings from `ClientEvents` for tiny real requests.
+  - `paid PREFERRED BACKEND DEPOSIT PROMPT...`: real agent turns through `MppTransport` with a memory durability store.
+
+  Real modes spend the wallet's funds; run them only with the wallet owner's approval.
+- 2026-10-19 mainnet results with wallet `0x9759…e122` and its P-256 access key:
+  - MACH-funded charges completed Codex (Luna) and Claude (Haiku 5.5) turns, spending 0.049925 and 0.074382 MACH.
+  - USDC.e TIP-1034 sessions completed Codex and Claude turns, including top-ups.
+  - After mpp-rs reused RPC connections, challenge-to-credential time for MACH charges fell from 1.11–1.18 s to 0.25–0.31 s.
+  - An unpaid 402 from the proxy took 0.5–3 s, and `/.well-known/mpp` took 0.5–0.8 s.
 - Keep logs and validation artifacts in ignored `output/`. Never commit wallet stores, channel databases or credentials.

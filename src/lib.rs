@@ -1,13 +1,18 @@
+mod stream;
+
 use std::{sync::Arc, time::Duration};
 
-use futures_util::TryStreamExt;
 use http::{
     HeaderMap, HeaderName, HeaderValue,
     header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, RETRY_AFTER},
 };
 use mpp::client::{
-    AcceptPaymentPolicy, Fetch, PaymentProvider, TempoAccountsProvider,
-    tempo::session::store::{ChannelStoreError, SqliteChannelStore, SqliteChannelStoreOptions},
+    AcceptPaymentPolicy, ClientEvents, DEFAULT_MAX_PAYMENT_RETRIES, Fetch, PaymentProvider,
+    TempoAccountsProvider,
+    tempo::session::{
+        TempoSessionProvider,
+        store::{ChannelStoreError, SqliteChannelStore, SqliteChannelStoreOptions},
+    },
 };
 use nanocode::{
     ClaudeClient, OpenAi,
@@ -23,6 +28,7 @@ use nanocode::{
         },
     },
 };
+use stream::{BodyError, PaidBody};
 
 pub use mpp;
 
@@ -36,6 +42,8 @@ pub struct MppTransport<P> {
     provider: P,
     client: reqwest::Client,
     policy: AcceptPaymentPolicy,
+    events: ClientEvents,
+    session: Option<TempoSessionProvider>,
 }
 
 impl<P: PaymentProvider + 'static> MppTransport<P> {
@@ -47,7 +55,21 @@ impl<P: PaymentProvider + 'static> MppTransport<P> {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
             policy: AcceptPaymentPolicy::Always,
+            events: ClientEvents::default(),
+            session: None,
         })
+    }
+
+    #[must_use]
+    pub fn events(mut self, events: ClientEvents) -> Self {
+        self.events = events;
+        self
+    }
+
+    #[must_use]
+    pub fn session(mut self, session: TempoSessionProvider) -> Self {
+        self.session = Some(session);
+        self
     }
 
     #[must_use]
@@ -92,7 +114,12 @@ impl<P: PaymentProvider + 'static> MppTransport<P> {
             .post(endpoint)
             .headers(headers)
             .body(body)
-            .send_with_payment_policy(&self.provider, &self.policy)
+            .send_with_payment_options_max_retries(
+                &self.provider,
+                &self.policy,
+                self.events.clone(),
+                DEFAULT_MAX_PAYMENT_RETRIES,
+            )
             .await
     }
 }
@@ -101,6 +128,7 @@ pub fn tempo_sessions(
     wallet: TempoAccountsProvider,
     service: &reqwest::Url,
 ) -> Result<TempoAccountsProvider, ChannelStoreError> {
+    nanocode::codex::transport::install_default_rustls_crypto_provider();
     let store = SqliteChannelStore::open(SqliteChannelStoreOptions {
         namespace: service.origin().ascii_serialization(),
         path: None,
@@ -148,7 +176,12 @@ impl<P: PaymentProvider + 'static> HostTransport for MppTransport<P> {
                 metadata = metadata.with_turn_state(turn_state);
             }
             Ok(HostHttpResponse {
-                body: Box::new(ResponseBody(response)),
+                body: Box::new(PaidBody::new(
+                    response,
+                    self.session.as_ref(),
+                    &self.client,
+                    request.endpoint(),
+                )),
                 metadata,
             })
         })
@@ -168,34 +201,50 @@ impl<P: PaymentProvider + 'static> HttpTransport for MppTransport<P> {
                 .map_err(payment_http_error)?;
             let status = response.status();
             let headers = std::mem::take(response.headers_mut());
+            let body = PaidBody::new(
+                response,
+                self.session.as_ref(),
+                &self.client,
+                &request.endpoint,
+            );
             Ok(HttpResponse::new(
                 status,
                 headers,
-                Box::pin(
-                    response
-                        .bytes_stream()
-                        .map_ok(Vec::from)
-                        .map_err(body_http_error),
-                ),
+                Box::pin(futures_util::stream::unfold(
+                    Some(body),
+                    |body| async move {
+                        let mut body = body?;
+                        match body.next().await {
+                            Ok(Some(chunk)) => Some((Ok(chunk), Some(body))),
+                            Ok(None) => None,
+                            Err(error) => Some((Err(error.into()), None)),
+                        }
+                    },
+                )),
             ))
         })
     }
 }
 
-struct ResponseBody(reqwest::Response);
-
-impl HostHttpBody for ResponseBody {
+impl HostHttpBody for PaidBody {
     fn next(&mut self) -> HostFuture<'_, Result<Option<Vec<u8>>, HostError>> {
-        Box::pin(async move {
-            self.0
-                .chunk()
-                .await
-                .map(|chunk| chunk.map(Vec::from))
-                .map_err(|error| {
-                    HostError::new(error.to_string())
-                        .with_reconnectable(error.is_body() || error.is_request())
-                })
-        })
+        Box::pin(async move { Self::next(self).await.map_err(HostError::from) })
+    }
+}
+
+impl From<BodyError> for HostError {
+    fn from(error: BodyError) -> Self {
+        Self::new(error.detail).with_reconnectable(error.retryable)
+    }
+}
+
+impl From<BodyError> for HttpError {
+    fn from(error: BodyError) -> Self {
+        Self::Transport {
+            detail: error.detail,
+            retryable: error.retryable,
+            timeout: error.timeout,
+        }
     }
 }
 
@@ -245,14 +294,6 @@ fn payment_http_error(error: mpp::client::HttpError) -> HttpError {
     HttpError::Transport {
         retryable: reconnectable(&error),
         timeout: matches!(&error, mpp::client::HttpError::Request(error) if error.is_timeout()),
-        detail: error.to_string(),
-    }
-}
-
-fn body_http_error(error: reqwest::Error) -> HttpError {
-    HttpError::Transport {
-        retryable: error.is_body() || error.is_request(),
-        timeout: error.is_timeout(),
         detail: error.to_string(),
     }
 }

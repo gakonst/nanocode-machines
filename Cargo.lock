@@ -3501,8 +3501,7 @@ dependencies = [
 [[package]]
 name = "mpp"
 version = "0.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea0f0dd609b04dc80d184bfeb104eed48fc3793c08affe20f7f5e6d6ba6994d6"
+source = "git+https://github.com/gakonst/mpp-rs?rev=c09dc92af36f4ac0130d17b0616f546e5382ea73#c09dc92af36f4ac0130d17b0616f546e5382ea73"
 dependencies = [
  "alloy",
  "async-trait",
@@ -3522,6 +3521,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -3916,9 +3916,12 @@ version = "0.1.0"
 dependencies = [
  "futures-util",
  "http",
+ "memchr",
  "mpp",
  "nanocode",
  "reqwest",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

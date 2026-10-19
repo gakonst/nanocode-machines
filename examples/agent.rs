@@ -1,4 +1,8 @@
-use mpp::{client::TempoAccountsProvider, protocol::methods::tempo::CHAIN_ID};
+use mpp::{
+    Address,
+    client::TempoAccountsProvider,
+    protocol::methods::tempo::{CHAIN_ID, machine_token},
+};
 use nanocode::{ClaudeModel, Model, Nanocode, Thinking};
 use nanocode_machines::{
     ANTHROPIC_MESSAGES_URL, MppTransport, OPENAI_API_BASE_URL, tempo_sessions,
@@ -6,8 +10,10 @@ use nanocode_machines::{
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-const HELP: &str = "cargo run --example agent -- DEPOSIT codex|claude [PROMPT...]
-Runs one Nanocode agent whose model requests are paid with Tempo MPP sessions.
+const HELP: &str = "cargo run --example agent -- [--prefer TOKEN] DEPOSIT codex|claude [PROMPT...]
+Runs one Nanocode agent whose model requests are paid over MPP from a Tempo Accounts access key.
+Offers funded from TOKEN win: a TIP-1034 session denominated in it, then, for MACH, a MACH-funded
+charge. TOKEN defaults to MACH. Otherwise the service's first offer is paid, sessions before charges.
 DEPOSIT is the session channel deposit and top-up, in payment-token base units (6 decimals).
 The wallet is the Tempo Accounts store at $TEMPO_HOME/wallet/store.json, or ~/.tempo/wallet/store.json.";
 
@@ -19,12 +25,21 @@ fn sessions(
     let provider = tempo_sessions(wallet.clone(), &service.parse()?)?
         .with_session_default_deposit(deposit)
         .with_session_top_up_amount(deposit);
-    Ok(MppTransport::new(provider)?)
+    let session = provider.session()?;
+    Ok(MppTransport::new(provider)?.session(session))
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut args = std::env::args().skip(1);
+    let mut args = std::env::args().skip(1).peekable();
+    let preferred = if args.peek().map(String::as_str) == Some("--prefer") {
+        args.next();
+        args.next()
+            .ok_or("--prefer requires a token address")?
+            .parse::<Address>()?
+    } else {
+        machine_token::token(CHAIN_ID).ok_or("MACH is not deployed on Tempo mainnet")?
+    };
     let (Some(deposit), Some(backend)) = (args.next(), args.next()) else {
         println!("{HELP}");
         return Ok(());
@@ -36,7 +51,9 @@ async fn main() -> Result<()> {
     } else {
         prompt
     };
-    let wallet = TempoAccountsProvider::from_default_store()?.with_expected_chain_id(CHAIN_ID);
+    let wallet = TempoAccountsProvider::from_default_store()?
+        .with_expected_chain_id(CHAIN_ID)
+        .with_preferred_currency(preferred);
     let runtime = Nanocode::builder()
         .openai(
             sessions(&wallet, OPENAI_API_BASE_URL, deposit)?
