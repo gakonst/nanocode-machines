@@ -31,6 +31,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aho-corasick"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -736,6 +745,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "anstream"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "824a212faf96e9acacdbd09febd34438f8f711fb84e09a8916013cd7815ca28d"
+dependencies = [
+ "anstyle",
+ "anstyle-parse",
+ "anstyle-query",
+ "anstyle-wincon",
+ "colorchoice",
+ "is_terminal_polyfill",
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle"
+version = "1.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
+
+[[package]]
+name = "anstyle-parse"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52ce7f38b242319f7cabaa6813055467063ecdc9d355bbb4ce0c68908cd8130e"
+dependencies = [
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle-query"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
+dependencies = [
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "anstyle-wincon"
+version = "3.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
+dependencies = [
+ "anstyle",
+ "once_cell_polyfill",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -746,6 +805,15 @@ name = "appendlist"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e149dc73cd30538307e7ffa2acd3d2221148eaeed4871f246657b1c3eaa1cbd2"
+
+[[package]]
+name = "approx"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab112f0a86d568ea0e627cc1d6be74a1e9cd55214684db5561995f6dad897c6"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "arc-swap"
@@ -1236,6 +1304,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bitcoin-consensus-encoding"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1399,6 +1476,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
+name = "by_address"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64fa3c856b712db6612c019f14756e64e4bcea13337a6b33b696333a9eaa2d06"
+
+[[package]]
 name = "byte-slice-cast"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1444,6 +1527,15 @@ dependencies = [
  "libc",
  "once_cell",
  "serde",
+]
+
+[[package]]
+name = "castaway"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dec551ab6e7578819132c713a93c022a05d60159dc86e7a7050223577484c55a"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]
@@ -1524,6 +1616,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946"
+dependencies = [
+ "clap_builder",
+ "clap_derive",
+]
+
+[[package]]
+name = "clap_builder"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0797fb7aeb1406c84efac526901f7ec3ead2124f946b494e72879d4b54704d"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "clap_lex",
+ "strsim",
+]
+
+[[package]]
+name = "clap_derive"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9c751b79415d4e559e3d1fcf128e09e720eb673a06d26cf6f392d37d75b66e0"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
+name = "clap_lex"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
+
+[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1543,6 +1675,12 @@ name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
+
+[[package]]
+name = "colorchoice"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "combine"
@@ -1696,6 +1834,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "compact_str"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dfdd1c2274d9aa354115b09dc9a901d6c5576818cdf70d14cae2bdb47df00ab"
+dependencies = [
+ "castaway",
+ "cfg-if",
+ "itoa",
+ "rustversion",
+ "ryu",
+ "static_assertions",
+]
+
+[[package]]
 name = "compression-codecs"
 version = "0.4.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1843,10 +1995,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-channel"
+version = "0.5.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98b0cc327b5bc766e7fda9c9260cc0fa81b43a8e240440422dff70788e3f9ef1"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
+
+[[package]]
+name = "crossterm"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8b9f2e4c67f833b660cdb0a3523065869fb35570177239812ed4c905aeff87b"
+dependencies = [
+ "base64 0.22.1",
+ "bitflags 2.13.2",
+ "crossterm_winapi",
+ "derive_more",
+ "document-features",
+ "futures-core",
+ "mio",
+ "parking_lot",
+ "rustix",
+ "signal-hook",
+ "signal-hook-mio",
+ "winapi",
+]
+
+[[package]]
+name = "crossterm_winapi"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acdd7c62a3665c7f6830a51635d9ac9b23ed385797f70a83bb8bafe9c572ab2b"
+dependencies = [
+ "winapi",
+]
 
 [[package]]
 name = "crunchy"
@@ -2196,6 +2386,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "document-features"
+version = "0.2.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
+dependencies = [
+ "litrs",
 ]
 
 [[package]]
@@ -3146,6 +3345,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoc"
+version = "2.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a37b2691796cffeb8a8cd305ac66e65841559f147f4e63231d0eafa4db5384d1"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "inout"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3155,10 +3363,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "instability"
+version = "0.3.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c3b5acc1e2fd9375041a388da33d1eb8aed5f7a8c0dd3543e3ea2805adfbe20"
+dependencies = [
+ "darling 0.24.1",
+ "indoc",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
+
+[[package]]
+name = "is_terminal_polyfill"
+version = "1.70.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "itertools"
@@ -3332,6 +3559,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kasuari"
+version = "0.4.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72f14c90e40a6133f4805b83542a7ed7364f56070b447f56e7f4e90297122209"
+dependencies = [
+ "hashbrown 0.17.1",
+ "portable-atomic",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "keccak"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3406,6 +3644,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "line-clipping"
+version = "0.3.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e752191d037c44ad111a8caa762921926658402f01cc1253f7bef2020ece4f5e"
+dependencies = [
+ "bitflags 2.13.2",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3416,6 +3663,12 @@ name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
+
+[[package]]
+name = "litrs"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4744e383959f0db86ede514b809b1c53251889093803c05267acc7d4e7030d70"
 
 [[package]]
 name = "lock_api"
@@ -3450,6 +3703,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
 ]
 
 [[package]]
@@ -3494,6 +3756,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
 dependencies = [
  "libc",
+ "log",
  "wasi",
  "windows-sys 0.61.2",
 ]
@@ -3527,7 +3790,7 @@ dependencies = [
 [[package]]
 name = "nanocode"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "nanocode-agent",
  "nanocode-agent-host",
@@ -3550,8 +3813,10 @@ dependencies = [
 [[package]]
 name = "nanocode-agent"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
+ "arc-swap",
+ "futures-util",
  "nanocode-agent-config",
  "nanocode-agent-core",
  "nanocode-durability",
@@ -3568,7 +3833,7 @@ dependencies = [
 [[package]]
 name = "nanocode-agent-config"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "nanocode-agent-core",
  "nanocode-durability",
@@ -3581,8 +3846,9 @@ dependencies = [
 [[package]]
 name = "nanocode-agent-core"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
+ "arc-swap",
  "futures-util",
  "nanocode-agent-types",
  "nanocode-home",
@@ -3591,13 +3857,14 @@ dependencies = [
  "nanocode-types",
  "serde",
  "serde_json",
+ "tokio",
  "uuid",
 ]
 
 [[package]]
 name = "nanocode-agent-host"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "nanocode-agent",
@@ -3620,7 +3887,7 @@ dependencies = [
 [[package]]
 name = "nanocode-agent-types"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "nanocode-tool-contracts",
  "nanocode-types-core",
@@ -3632,7 +3899,7 @@ dependencies = [
 [[package]]
 name = "nanocode-audio"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "base64 0.22.1",
  "base64-simd",
@@ -3643,7 +3910,7 @@ dependencies = [
 [[package]]
 name = "nanocode-backend-claude"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3677,7 +3944,7 @@ dependencies = [
 [[package]]
 name = "nanocode-backend-claude-client"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -3706,7 +3973,7 @@ dependencies = [
 [[package]]
 name = "nanocode-backend-claude-tools"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -3723,7 +3990,7 @@ dependencies = [
 [[package]]
 name = "nanocode-backend-codex"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3763,10 +4030,11 @@ dependencies = [
 [[package]]
 name = "nanocode-backend-codex-client"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "arc-swap",
  "base64 0.22.1",
+ "flate2",
  "futures-util",
  "getrandom 0.4.3",
  "http",
@@ -3785,17 +4053,41 @@ dependencies = [
  "sha2 0.11.1",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-rustls",
  "tokio-tungstenite",
  "tower",
  "tracing",
  "url",
+ "uuid",
+ "zstd",
+]
+
+[[package]]
+name = "nanocode-cli"
+version = "0.6.7"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
+dependencies = [
+ "clap",
+ "futures-util",
+ "nanocode",
+ "nanocode-home",
+ "nanocode-observability",
+ "nanocode-store-jsonl",
+ "nanocode-tui",
+ "nix 0.31.3",
+ "opentelemetry",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry",
  "uuid",
 ]
 
 [[package]]
 name = "nanocode-code-mode"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "futures-util",
  "nanocode-code-mode-engine",
@@ -3812,7 +4104,7 @@ dependencies = [
 [[package]]
 name = "nanocode-code-mode-engine"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "base64 0.22.1",
  "base64-simd",
@@ -3827,7 +4119,7 @@ dependencies = [
 [[package]]
 name = "nanocode-cua"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3843,8 +4135,10 @@ dependencies = [
 [[package]]
 name = "nanocode-durability"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
+ "arc-swap",
+ "futures-util",
  "nanocode-agent-core",
  "nanocode-durability-core",
  "nanocode-platform",
@@ -3858,7 +4152,7 @@ dependencies = [
 [[package]]
 name = "nanocode-durability-core"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "blake3",
  "nanocode-platform",
@@ -3872,7 +4166,7 @@ dependencies = [
 [[package]]
 name = "nanocode-home"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "nix 0.31.3",
  "serde",
@@ -3882,9 +4176,10 @@ dependencies = [
 [[package]]
 name = "nanocode-http"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "brotli-decompressor",
+ "flate2",
  "futures-util",
  "http",
  "nanocode-zstd",
@@ -3894,7 +4189,7 @@ dependencies = [
 [[package]]
 name = "nanocode-image"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "base64 0.22.1",
  "base64-simd",
@@ -3919,6 +4214,7 @@ dependencies = [
  "memchr",
  "mpp",
  "nanocode",
+ "nanocode-cli",
  "reqwest",
  "serde",
  "serde_json",
@@ -3928,7 +4224,7 @@ dependencies = [
 [[package]]
 name = "nanocode-mcp"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "base64 0.22.1",
  "futures-channel",
@@ -3943,7 +4239,7 @@ dependencies = [
 [[package]]
 name = "nanocode-mcp-http"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3962,7 +4258,7 @@ dependencies = [
 [[package]]
 name = "nanocode-mcp-tools"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3987,16 +4283,39 @@ dependencies = [
 [[package]]
 name = "nanocode-media"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "nanocode-audio",
  "nanocode-image",
 ]
 
 [[package]]
+name = "nanocode-observability"
+version = "0.6.7"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
+dependencies = [
+ "clap",
+ "nanocode-tls",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry-proto",
+ "opentelemetry-semantic-conventions",
+ "opentelemetry_sdk",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "nanocode-platform"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "getrandom 0.4.3",
  "tokio",
@@ -4006,7 +4325,7 @@ dependencies = [
 [[package]]
 name = "nanocode-process"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "getrandom 0.4.3",
  "nanocode-home",
@@ -4022,7 +4341,7 @@ dependencies = [
 [[package]]
 name = "nanocode-process-contracts"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "nanocode-home",
  "serde",
@@ -4031,7 +4350,7 @@ dependencies = [
 [[package]]
 name = "nanocode-schema"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "appendlist",
  "base64 0.22.1",
@@ -4049,7 +4368,7 @@ dependencies = [
 [[package]]
 name = "nanocode-store-jsonl"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "nanocode-durability-core",
  "nix 0.31.3",
@@ -4064,7 +4383,7 @@ dependencies = [
 [[package]]
 name = "nanocode-subagents"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "blake3",
@@ -4083,7 +4402,7 @@ dependencies = [
 [[package]]
 name = "nanocode-tls"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "rustls",
  "rustls-graviola",
@@ -4096,7 +4415,7 @@ dependencies = [
 [[package]]
 name = "nanocode-tool-contracts"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "nanocode-types-core",
  "serde",
@@ -4107,7 +4426,7 @@ dependencies = [
 [[package]]
 name = "nanocode-tool-host"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -4128,7 +4447,7 @@ dependencies = [
 [[package]]
 name = "nanocode-tool-provider"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "nanocode-home",
@@ -4139,7 +4458,7 @@ dependencies = [
 [[package]]
 name = "nanocode-tool-runtime"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -4172,7 +4491,7 @@ dependencies = [
 [[package]]
 name = "nanocode-tools"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "async-trait",
  "nanocode-tool-contracts",
@@ -4185,7 +4504,7 @@ dependencies = [
 [[package]]
 name = "nanocode-tools-macros"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -4194,10 +4513,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanocode-tui"
+version = "0.6.7"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
+dependencies = [
+ "crossterm",
+ "memchr",
+ "pulldown-cmark",
+ "ratatui",
+ "serde",
+ "syntect",
+ "tracing",
+ "unicode-segmentation",
+ "unicode-width",
+ "wide",
+]
+
+[[package]]
 name = "nanocode-types"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
+ "arc-swap",
  "futures-util",
  "nanocode-platform",
  "nanocode-types-core",
@@ -4205,12 +4542,13 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
 name = "nanocode-types-core"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 dependencies = [
  "serde",
  "serde_json",
@@ -4221,7 +4559,7 @@ dependencies = [
 [[package]]
 name = "nanocode-zstd"
 version = "0.6.7"
-source = "git+https://github.com/gakonst/nanocode?rev=e6ad17e1696488be519bf9916f5e7b0a5d7bc18c#e6ad17e1696488be519bf9916f5e7b0a5d7bc18c"
+source = "git+https://github.com/gakonst/nanocode?rev=b82b021b26b85b427ba8380e1df1cb55b40ee135#b82b021b26b85b427ba8380e1df1cb55b40ee135"
 
 [[package]]
 name = "nix"
@@ -4255,6 +4593,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "610a5acd306ec67f907abe5567859a3c693fb9886eb1f012ab8f2a47bef3db51"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "nu-ansi-term"
+version = "0.50.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4374,6 +4721,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "num_threads"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cabcc654086861f9e1bc5115258de62ef92c79b20f4615a1b0cc57c4e82027d4"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "nybbles"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4394,10 +4750,116 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "once_cell_polyfill"
+version = "1.70.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "onig"
+version = "6.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cc3cbf698f9438986c11a880c90a6d04b9de27575afd28bbf45b154b6c709e2"
+dependencies = [
+ "bitflags 2.13.2",
+ "libc",
+ "once_cell",
+ "onig_sys",
+]
+
+[[package]]
+name = "onig_sys"
+version = "69.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e68317604e77e53b85896388e1a803c1d21b74c899ec9e5e1112db90735edd7"
+dependencies = [
+ "cc",
+ "pkg-config",
+]
+
+[[package]]
 name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
+
+[[package]]
+name = "opentelemetry"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0142c63252a9e054e68a4c61a5778f7b14f576274d593f8ce883d191a099682"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+ "js-sys",
+ "pin-project-lite",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "opentelemetry-http"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5683015d09e2df236ef005b17f6f196f0d5f6313c4fa43a7b6a53b52776e4331"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "http",
+ "opentelemetry",
+ "reqwest",
+]
+
+[[package]]
+name = "opentelemetry-otlp"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9966929966d17620d7c316c643ba62631826e10021409357772d5eea84f62c35"
+dependencies = [
+ "http",
+ "opentelemetry",
+ "opentelemetry-http",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "reqwest",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "opentelemetry-proto"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56d658ba1faf63f7b9c492cfbe6e0ec365440a16132d3270c1065f7b33f1b638"
+dependencies = [
+ "base64 0.22.1",
+ "const-hex",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "prost",
+ "serde",
+]
+
+[[package]]
+name = "opentelemetry-semantic-conventions"
+version = "0.32.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c913ac17a6c451661ee255f4625d143e51647ae78ebd969b75e41c4442f4fe47"
+
+[[package]]
+name = "opentelemetry_sdk"
+version = "0.32.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b59f80e1ac4d5ff7a2db8fb6c80badb7f0f3f858211fba08dd9aaec750894f9"
+dependencies = [
+ "futures-channel",
+ "futures-executor",
+ "futures-util",
+ "opentelemetry",
+ "percent-encoding",
+ "portable-atomic",
+ "rand 0.9.5",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "outref"
@@ -4429,6 +4891,39 @@ dependencies = [
  "primefield",
  "primeorder 0.14.0",
  "sha2 0.11.1",
+]
+
+[[package]]
+name = "palette"
+version = "0.7.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddeed8580d347d2abf3dcf06a5f0b3dc020258338526b277847cd4248a70fc64"
+dependencies = [
+ "approx",
+ "libm",
+ "palette_derive",
+ "palette_math",
+]
+
+[[package]]
+name = "palette_derive"
+version = "0.7.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88537020289b719d81be994ccf1bbf4990f477e2f69ee52fe3e45f43a02e56be"
+dependencies = [
+ "by_address",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "palette_math"
+version = "0.7.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e6eb142958d64335fb0e345c5b9ead2ecd6fc438c307e9d7d3c4fd428dbaf12"
+dependencies = [
+ "libm",
 ]
 
 [[package]]
@@ -4792,12 +5287,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
+dependencies = [
+ "bytes",
+ "prost-derive",
+]
+
+[[package]]
+name = "prost-derive"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
+dependencies = [
+ "anyhow",
+ "itertools 0.10.5",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "psm"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "200b9ff220857e53e184257720a14553b2f4aa02577d2ed9842d45d4b9654810"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+dependencies = [
+ "bitflags 2.13.2",
+ "memchr",
+ "unicase",
 ]
 
 [[package]]
@@ -4942,6 +5471,72 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratatui"
+version = "0.30.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3274ba0a2c5e1bcad2a2005d20f4dc59dad26b2eb0940fb094500dba4099d57d"
+dependencies = [
+ "instability",
+ "ratatui-core",
+ "ratatui-crossterm",
+ "ratatui-widgets",
+ "serde",
+]
+
+[[package]]
+name = "ratatui-core"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbb175c433c8e28a809d1f5773a2ae96e68c0ce40db865cbab1020bf33ae479c"
+dependencies = [
+ "bitflags 2.13.2",
+ "compact_str",
+ "hashbrown 0.17.1",
+ "itertools 0.14.0",
+ "kasuari",
+ "lru",
+ "palette",
+ "serde",
+ "strum",
+ "thiserror 2.0.21",
+ "unicode-segmentation",
+ "unicode-truncate",
+ "unicode-width",
+]
+
+[[package]]
+name = "ratatui-crossterm"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "567584a3b0e6a8203c23de40b4861497266725eb5363dbfd18a1edd603cca9f0"
+dependencies = [
+ "cfg-if",
+ "crossterm",
+ "instability",
+ "ratatui-core",
+]
+
+[[package]]
+name = "ratatui-widgets"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66e3d19bcc9130ca376277d93b60767ff121ace3be06f5f95f81dd68956407d1"
+dependencies = [
+ "bitflags 2.13.2",
+ "hashbrown 0.17.1",
+ "indoc",
+ "instability",
+ "itertools 0.14.0",
+ "line-clipping",
+ "ratatui-core",
+ "serde",
+ "strum",
+ "time",
+ "unicode-segmentation",
+ "unicode-width",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4982,6 +5577,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-automata"
+version = "0.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-syntax",
+]
+
+[[package]]
 name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5013,6 +5619,7 @@ checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
 dependencies = [
  "base64 0.23.1",
  "bytes",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",
@@ -5512,10 +6119,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
+name = "ryu"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
 name = "ryu-js"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714"
+
+[[package]]
+name = "safe_arch"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42c6efa15875e6ecb39ca61fb0b0c1a40b84fac5a5ffe71eef7d1000c8eb3f5f"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "same-file"
@@ -5896,6 +6518,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "shared_library"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5916,6 +6547,27 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+
+[[package]]
+name = "signal-hook"
+version = "0.3.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
+
+[[package]]
+name = "signal-hook-mio"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc"
+dependencies = [
+ "libc",
+ "mio",
+ "signal-hook",
+]
 
 [[package]]
 name = "signal-hook-registry"
@@ -6054,10 +6706,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+dependencies = [
+ "strum_macros",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "symlink"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7973cce6668464ea31f176d85b13c7ab3bba2cb3b77a2ed26abd7801688010a"
 
 [[package]]
 name = "syn"
@@ -6122,6 +6801,24 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "syntect"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "656b45c05d95a5704399aeef6bd0ddec7b2b3531b7c9e900abbf7c4d2190c925"
+dependencies = [
+ "bincode",
+ "flate2",
+ "fnv",
+ "once_cell",
+ "onig",
+ "regex-syntax",
+ "serde",
+ "serde_derive",
+ "thiserror 2.0.21",
+ "walkdir",
 ]
 
 [[package]]
@@ -6290,6 +6987,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread_local"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "threadpool"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6305,7 +7011,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
 dependencies = [
  "deranged",
+ "libc",
  "num-conv",
+ "num_threads",
  "powerfmt",
  "serde_core",
  "time-core",
@@ -6536,6 +7244,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-appender"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "050686193eb999b4bb3bc2acfa891a13da00f79734704c4b8b4ef1a10b368a3c"
+dependencies = [
+ "crossbeam-channel",
+ "symlink",
+ "thiserror 2.0.21",
+ "time",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "tracing-attributes"
 version = "0.1.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6553,6 +7274,64 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-opentelemetry"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adbc64cba7137545b8044cb1fe9814f7aacf3c6b5f9b45be8bb5db538befdb26"
+dependencies = [
+ "js-sys",
+ "opentelemetry",
+ "smallvec",
+ "tracing",
+ "tracing-core",
+ "tracing-subscriber",
+ "web-time",
+]
+
+[[package]]
+name = "tracing-serde"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704b1aeb7be0d0a84fc9828cae51dab5970fee5088f83d1dd7ee6f6246fc6ff1"
+dependencies = [
+ "serde",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
+dependencies = [
+ "matchers",
+ "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
+ "serde",
+ "serde_json",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
+ "tracing-serde",
 ]
 
 [[package]]
@@ -6610,6 +7389,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
 
 [[package]]
+name = "unicase"
+version = "2.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "357cc3acc6a036009fd6c973ed009037c732d60d0b4f6c673e9041497482a28f"
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6629,6 +7414,23 @@ name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
+name = "unicode-truncate"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16b380a1238663e5f8a691f9039c73e1cdae598a30e9855f541d29b08b53e9a5"
+dependencies = [
+ "itertools 0.14.0",
+ "unicode-segmentation",
+ "unicode-width",
+]
+
+[[package]]
+name = "unicode-width"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
 name = "unicode-xid"
@@ -6676,6 +7478,12 @@ name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
+
+[[package]]
+name = "utf8parse"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
@@ -6842,6 +7650,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "web-time"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "webpki-root-certs"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6855,6 +7673,16 @@ name = "weezl"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
+
+[[package]]
+name = "wide"
+version = "1.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d920ac99c3c8edce110cb8d07dbb324d6d026011dce85b1e9355b70f0adacc4f"
+dependencies = [
+ "bytemuck",
+ "safe_arch",
+]
 
 [[package]]
 name = "winapi"
@@ -7224,6 +8052,34 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+
+[[package]]
+name = "zstd"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+dependencies = [
+ "zstd-safe",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "7.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.1.2+zstd.1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "481ada9c543b2323cbb7bbdbb5249177fbf0188ed959ed2c15e4b22421c84ed3"
+dependencies = [
+ "cc",
+ "pkg-config",
+]
 
 [[package]]
 name = "zune-core"
