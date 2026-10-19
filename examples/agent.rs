@@ -4,9 +4,7 @@ use mpp::{
     protocol::methods::tempo::{CHAIN_ID, machine_token},
 };
 use nanocode::{ClaudeModel, Model, Nanocode, Thinking};
-use nanocode_machines::{
-    ANTHROPIC_MESSAGES_URL, MppTransport, OPENAI_API_BASE_URL, tempo_sessions,
-};
+use nanocode_machines::{ANTHROPIC_MESSAGES_URL, MppLayer, OPENAI_API_BASE_URL, tempo_sessions};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -17,16 +15,16 @@ charge. TOKEN defaults to MACH. Otherwise the service's first offer is paid, ses
 DEPOSIT is the session channel deposit and top-up, in payment-token base units (6 decimals).
 The wallet is the Tempo Accounts store at $TEMPO_HOME/wallet/store.json, or ~/.tempo/wallet/store.json.";
 
-fn sessions(
+fn layer(
     wallet: &TempoAccountsProvider,
     service: &str,
     deposit: u128,
-) -> Result<MppTransport<TempoAccountsProvider>> {
+) -> Result<MppLayer<TempoAccountsProvider>> {
     let provider = tempo_sessions(wallet.clone(), &service.parse()?)?
         .with_session_default_deposit(deposit)
         .with_session_top_up_amount(deposit);
     let session = provider.session()?;
-    Ok(MppTransport::new(provider)?.session(session))
+    Ok(MppLayer::new(provider)?.session(session))
 }
 
 #[tokio::main]
@@ -54,8 +52,8 @@ async fn main() -> Result<()> {
     let wallet = TempoAccountsProvider::from_default_store()?
         .with_expected_chain_id(CHAIN_ID)
         .with_preferred_currency(preferred);
-    let openai = sessions(&wallet, OPENAI_API_BASE_URL, deposit)?;
-    let claude = sessions(&wallet, ANTHROPIC_MESSAGES_URL, deposit)?;
+    let openai = layer(&wallet, OPENAI_API_BASE_URL, deposit)?;
+    let claude = layer(&wallet, ANTHROPIC_MESSAGES_URL, deposit)?;
     let responses = format!("{OPENAI_API_BASE_URL}/responses");
     let preconnect = async {
         match backend.as_str() {

@@ -1,4 +1,4 @@
-use std::{env::VarError, process::ExitCode, sync::Arc};
+use std::{env::VarError, process::ExitCode};
 
 use mpp::{
     Address,
@@ -7,9 +7,7 @@ use mpp::{
 };
 use nanocode::{ClaudeModel, Model};
 use nanocode_cli::ModelClients;
-use nanocode_machines::{
-    ANTHROPIC_MESSAGES_URL, MppTransport, OPENAI_API_BASE_URL, tempo_sessions,
-};
+use nanocode_machines::{ANTHROPIC_MESSAGES_URL, MppLayer, OPENAI_API_BASE_URL, tempo_sessions};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -23,16 +21,16 @@ fn env(name: &str) -> Result<Option<String>> {
     }
 }
 
-fn transport(
+fn layer(
     wallet: &TempoAccountsProvider,
     service: &str,
     deposit: u128,
-) -> Result<MppTransport<TempoAccountsProvider>> {
+) -> Result<MppLayer<TempoAccountsProvider>> {
     let provider = tempo_sessions(wallet.clone(), &service.parse()?)?
         .with_session_default_deposit(deposit)
         .with_session_top_up_amount(deposit);
     let session = provider.session()?;
-    Ok(MppTransport::new(provider)?.session(session))
+    Ok(MppLayer::new(provider)?.session(session))
 }
 
 fn clients() -> Result<ModelClients> {
@@ -47,24 +45,23 @@ fn clients() -> Result<ModelClients> {
     let wallet = TempoAccountsProvider::from_default_store()?
         .with_expected_chain_id(CHAIN_ID)
         .with_preferred_currency(preferred);
-    let openai = transport(&wallet, OPENAI_API_BASE_URL, deposit)?;
-    let claude = transport(&wallet, ANTHROPIC_MESSAGES_URL, deposit)?;
+    let openai = layer(&wallet, OPENAI_API_BASE_URL, deposit)?;
+    let claude = layer(&wallet, ANTHROPIC_MESSAGES_URL, deposit)?;
     let warm = (openai.clone(), claude.clone());
-    Ok(ModelClients {
-        openai: Arc::new(move || openai.openai()),
-        claude: Arc::new(move || claude.claude()),
-        warm_up: Some(Arc::new(move || {
+    Ok(ModelClients::new()
+        .openai(move || openai.openai())
+        .claude(move || claude.claude())
+        .warm_up(move || {
             let (openai, claude) = warm.clone();
-            Box::pin(async move {
+            async move {
                 let responses = format!("{OPENAI_API_BASE_URL}/responses");
                 let _ = futures_util::future::join(
                     openai.preconnect(&responses, Model::Luna.as_str()),
                     claude.preconnect(ANTHROPIC_MESSAGES_URL, ClaudeModel::Haiku55.as_str()),
                 )
                 .await;
-            })
-        })),
-    })
+            }
+        }))
 }
 
 fn main() -> ExitCode {
