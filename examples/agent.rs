@@ -54,19 +54,29 @@ async fn main() -> Result<()> {
     let wallet = TempoAccountsProvider::from_default_store()?
         .with_expected_chain_id(CHAIN_ID)
         .with_preferred_currency(preferred);
-    let runtime = Nanocode::builder()
-        .openai(
-            sessions(&wallet, OPENAI_API_BASE_URL, deposit)?
-                .openai()
-                .model(Model::Luna)
-                .build()?,
-        )
-        .claude(sessions(&wallet, ANTHROPIC_MESSAGES_URL, deposit)?.claude())
+    let openai = sessions(&wallet, OPENAI_API_BASE_URL, deposit)?;
+    let claude = sessions(&wallet, ANTHROPIC_MESSAGES_URL, deposit)?;
+    let responses = format!("{OPENAI_API_BASE_URL}/responses");
+    let preconnect = async {
+        match backend.as_str() {
+            "codex" => openai.preconnect(&responses, Model::Luna.as_str()).await,
+            _ => {
+                claude
+                    .preconnect(ANTHROPIC_MESSAGES_URL, ClaudeModel::Haiku55.as_str())
+                    .await
+            }
+        }
+    };
+    let build = Nanocode::builder()
+        .openai(openai.openai().model(Model::Luna).build()?)
+        .claude(claude.claude())
         .without_cua()
         .runner_management(false)
         .thinking(Thinking::Low)
-        .build_async()
-        .await?;
+        .build_async();
+    let (preconnected, runtime) = tokio::join!(preconnect, build);
+    preconnected?;
+    let runtime = runtime?;
     let outcome: Result<()> = async {
         let (agent, _events) = match backend.as_str() {
             "codex" => {
