@@ -9,10 +9,11 @@ repository = "https://github.com/gakonst/nanocode-machines"
 publish = false
 
 [dependencies]
-nanocode = { git = "https://github.com/gakonst/nanocode", rev = "35cdad347e10847c39c42c1c4f3bcc00b1f2fc04" }
-nanocode-cli = { git = "https://github.com/gakonst/nanocode", rev = "35cdad347e10847c39c42c1c4f3bcc00b1f2fc04" }
-mpp = { git = "https://github.com/tempoxyz/mpp-rs", rev = "566c707567a56416e2e30bab65d250750e28f316", default-features = false, features = ["client", "tempo", "sqlite", "forward-proxy", "reqwest-rustls-tls-no-provider"] }
+nanocode = { git = "https://github.com/gakonst/nanocode", rev = "15ca3a62933b39d0c2ac58dbd7afb50e69ebbda2" }
+nanocode-cli = { git = "https://github.com/gakonst/nanocode", rev = "15ca3a62933b39d0c2ac58dbd7afb50e69ebbda2" }
+mpp = { git = "https://github.com/tempoxyz/mpp-rs", rev = "d672e7523970cc4077df226e028591c9669e4322", default-features = false, features = ["client", "tempo", "sqlite", "forward-proxy", "reqwest-rustls-tls-no-provider"] }
 futures-util = { version = "0.3.31", default-features = false, features = ["std"] }
 http = "1.3.1"
 reqwest = { version = "0.13.4", default-features = false, features = ["stream"] }
 serde_json = "1.0.149"
+tokio = { version = "1.48.0", default-features = false, features = ["sync"] }
