@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     process::ExitCode,
     sync::{Arc, Mutex, OnceLock},
 };
@@ -195,6 +195,7 @@ struct Ledger {
     totals: BTreeMap<String, u128>,
     last: Option<(u128, String)>,
     listeners: Vec<UnboundedSender<String>>,
+    sessions: HashMap<String, TempoSessionProvider>,
 }
 
 impl ToolPayments {
@@ -210,10 +211,19 @@ impl ToolPayments {
             record(&recorded, &context, machine);
             async {}
         });
-        let tools = wallet.clone();
-        let proxy = ForwardProxy::bind(move |url| sessions(&tools, url, deposit))?
-            .bypass(models)
-            .events(events);
+        let (tools, opened) = (wallet.clone(), ledger.clone());
+        let proxy = ForwardProxy::bind(move |url| -> Result<TempoAccountsProvider> {
+            let wallet = sessions(&tools, url, deposit)?;
+            let origin = url.origin().ascii_serialization();
+            opened
+                .lock()
+                .unwrap()
+                .sessions
+                .insert(origin, wallet.session()?);
+            Ok(wallet)
+        })?
+        .bypass(models)
+        .events(events);
         for (name, value) in proxy.environment() {
             unsafe { std::env::set_var(name, value) };
         }
@@ -275,7 +285,6 @@ fn record(
         .request
         .decode::<serde_json::Value>()
         .ok()?;
-    let amount = request.get("amount")?.as_str()?.parse().ok()?;
     let currency = context
         .receipt
         .as_ref()
@@ -294,15 +303,46 @@ fn record(
     let reference = context
         .receipt
         .as_ref()
-        .map(|receipt| format!(" · {}", receipt.reference))
-        .unwrap_or_default();
-    let notice = format!(
-        "paid {} {symbol} to {} ({}{reference})",
-        mach(amount),
-        context.url.host_str().unwrap_or_default(),
-        context.challenge.intent
-    );
+        .map_or("", |receipt| receipt.reference.as_str());
     let mut ledger = ledger.lock().unwrap();
+    let session = ledger
+        .sessions
+        .get(&context.url.origin().ascii_serialization())
+        .filter(|_| context.challenge.intent.as_str() == "session");
+    let (amount, detail) = match session {
+        Some(session) => {
+            let opened = context
+                .credential
+                .payload
+                .get("action")
+                .and_then(|action| action.as_str())
+                == Some("open");
+            let deposit = session
+                .channels()
+                .into_values()
+                .find(|entry| entry.channel_id.to_string().eq_ignore_ascii_case(reference))
+                .map(|entry| entry.deposit);
+            let detail = match deposit.filter(|_| opened) {
+                Some(deposit) => {
+                    format!(
+                        "opened a {} {symbol} session, channel {reference}",
+                        mach(deposit)
+                    )
+                }
+                None => format!("session voucher, channel {reference}"),
+            };
+            (session.spend().last?, detail)
+        }
+        None => (
+            request.get("amount")?.as_str()?.parse().ok()?,
+            format!("charge, tx {reference}"),
+        ),
+    };
+    let notice = format!(
+        "paid {} {symbol} to {} ({detail})",
+        mach(amount),
+        context.url.host_str().unwrap_or_default()
+    );
     *ledger.totals.entry(symbol.clone()).or_default() += amount;
     ledger.last = Some((amount, symbol));
     ledger
