@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     process::ExitCode,
     sync::{Arc, Mutex, OnceLock},
 };
@@ -9,7 +9,7 @@ use mpp::{
     Address,
     client::{
         AcceptPaymentPolicy, ClientEventSubscription, ClientEvents, DEFAULT_MAX_PAYMENT_RETRIES,
-        DepositContext, Exchange, FlowError, ForwardProxy, PaymentResponseContext,
+        DepositContext, Exchange, FlowError, ForwardProxy, PaymentProvider, PaymentResponseContext,
         TempoAccountsProvider, TempoSessionProvider,
         directory::{self, MPP_DIRECTORY_URL},
     },
@@ -19,7 +19,7 @@ use nanocode::{
     ClaudeModel, Model,
     http::{self as layer, BoxFuture, Event, EventHook, Layer, Next},
 };
-use nanocode_cli::ModelClients;
+use nanocode_cli::{ModelClients, Panel};
 use reqwest::ResponseBuilderExt;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -33,8 +33,8 @@ const PREPAID_REQUESTS: u32 = 2;
 #[derive(Clone)]
 struct Mpp {
     wallet: TempoAccountsProvider,
-    session: TempoSessionProvider,
     client: reqwest::Client,
+    events: ClientEvents,
 }
 
 impl Mpp {
@@ -42,32 +42,23 @@ impl Mpp {
         wallet: &TempoAccountsProvider,
         service: &str,
         deposit: u128,
-        events: &ClientEvents,
+        payments: &Payments,
     ) -> Result<Self> {
-        let wallet = sessions(wallet, &service.parse()?, deposit, events)?;
+        let service = reqwest::Url::parse(service)?;
+        let wallet = payments.sessions(wallet, &service, deposit)?;
         Ok(Self {
-            session: wallet.session()?,
             wallet,
             client: reqwest::Client::builder()
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
+            events: payments.events.clone(),
         })
     }
 
     async fn preconnect(self, url: String, model: &str) {
         let body = serde_json::json!({ "model": model }).to_string();
         let _ = self.wallet.preconnect(&self.client, &url, body).await;
-    }
-
-    fn status(&self, name: &str) -> Option<String> {
-        let spend = self.session.spend();
-        Some(format!(
-            "{name} spent {} MACH (last {}) · {} MACH left",
-            mach(spend.spent),
-            mach(spend.last?),
-            mach(spend.remaining)
-        ))
     }
 }
 
@@ -93,7 +84,7 @@ impl Layer for Mpp {
                 paid,
                 &self.wallet,
                 &AcceptPaymentPolicy::Always,
-                &ClientEvents::default(),
+                &self.events,
                 DEFAULT_MAX_PAYMENT_RETRIES,
             )
             .await
@@ -106,7 +97,7 @@ impl Layer for Mpp {
                 .ok_or_else(|| layer::Error::new("the payment flow returned no response"))?;
             Ok(
                 layer::Response::new(response.status(), response.headers().clone(), body)
-                    .with_events(SessionEvents {
+                    .with_events(StreamPayments {
                         mpp: self.clone(),
                         url: request.url,
                     }),
@@ -115,19 +106,19 @@ impl Layer for Mpp {
     }
 }
 
-struct SessionEvents {
+struct StreamPayments {
     mpp: Mpp,
     url: String,
 }
 
-impl EventHook for SessionEvents {
+impl EventHook for StreamPayments {
     fn event(
         &mut self,
         event: Event<'_>,
     ) -> Option<BoxFuture<'static, std::result::Result<(), layer::Error>>> {
         let work =
             self.mpp
-                .session
+                .wallet
                 .stream_event(&self.mpp.client, &self.url, event.name?, event.data)?;
         Some(Box::pin(async move {
             work.await
@@ -175,21 +166,6 @@ impl Exchange for NextExchange<'_> {
     }
 }
 
-fn sessions(
-    wallet: &TempoAccountsProvider,
-    service: &reqwest::Url,
-    deposit: u128,
-    events: &ClientEvents,
-) -> Result<TempoAccountsProvider> {
-    Ok(wallet
-        .clone()
-        .with_sqlite_session_store(service)?
-        .with_session_prepaid_requests(PREPAID_REQUESTS)
-        .with_session_default_deposit(deposit)
-        .with_session_top_up_amount(deposit)
-        .with_session_events(events.clone()))
-}
-
 #[derive(Clone)]
 struct Payments {
     ledger: Arc<Mutex<Ledger>>,
@@ -200,24 +176,34 @@ struct Payments {
 
 #[derive(Default)]
 struct Ledger {
-    totals: BTreeMap<String, u128>,
-    last: Option<(u128, String)>,
+    services: BTreeMap<String, Service>,
+    sessions: HashMap<String, TempoSessionProvider>,
     listeners: Vec<UnboundedSender<String>>,
 }
 
+struct Service {
+    model: bool,
+    symbol: String,
+    spent: u128,
+    requests: u64,
+    last: u128,
+}
+
 impl Payments {
-    fn new(machine: Address) -> Self {
+    fn new(machine: Address, models: Vec<String>) -> Self {
         let events = ClientEvents::default();
         let ledger = Arc::new(Mutex::new(Ledger::default()));
         let (paid, deposited) = (ledger.clone(), ledger.clone());
         let observers = [
             events.on_payment_response(move |context| {
-                paid_notice(&paid, &context, machine);
+                record(&mut paid.lock().unwrap(), &context, machine, &models);
                 async {}
             }),
             events.on_deposit(move |context| {
-                let notice = deposit_notice(&context, machine);
-                notify(&mut deposited.lock().unwrap(), notice);
+                notify(
+                    &mut deposited.lock().unwrap(),
+                    deposit_notice(&context, machine),
+                );
                 async {}
             }),
         ];
@@ -229,13 +215,33 @@ impl Payments {
         }
     }
 
-    fn pay_tools(&self, wallet: &TempoAccountsProvider, deposit: u128) -> Result<()> {
-        let mut models = Vec::new();
-        for url in [OPENAI, ANTHROPIC] {
-            models.extend(reqwest::Url::parse(url)?.host_str().map(str::to_owned));
-        }
-        let (tools, events) = (wallet.clone(), self.events.clone());
-        let proxy = ForwardProxy::bind(move |url| sessions(&tools, url, deposit, &events))?
+    fn sessions(
+        &self,
+        wallet: &TempoAccountsProvider,
+        service: &reqwest::Url,
+        deposit: u128,
+    ) -> Result<TempoAccountsProvider> {
+        let wallet = wallet
+            .clone()
+            .with_sqlite_session_store(service)?
+            .with_session_prepaid_requests(PREPAID_REQUESTS)
+            .with_session_default_deposit(deposit)
+            .with_session_top_up_amount(deposit)
+            .with_session_events(self.events.clone());
+        let host = service.host_str().unwrap_or_default().to_owned();
+        let session = wallet.session()?;
+        self.ledger.lock().unwrap().sessions.insert(host, session);
+        Ok(wallet)
+    }
+
+    fn pay_tools(
+        &self,
+        wallet: &TempoAccountsProvider,
+        deposit: u128,
+        models: Vec<String>,
+    ) -> Result<()> {
+        let (payments, tools) = (self.clone(), wallet.clone());
+        let proxy = ForwardProxy::bind(move |url| payments.sessions(&tools, url, deposit))?
             .bypass(models)
             .events(self.events.clone());
         for (name, value) in proxy.environment() {
@@ -270,24 +276,47 @@ impl Payments {
             return Some(format!("tool payments off: {error}"));
         }
         let ledger = self.ledger.lock().unwrap();
-        let (last, symbol) = ledger.last.as_ref()?;
-        let totals: Vec<_> = ledger
-            .totals
-            .iter()
-            .map(|(symbol, total)| format!("{} {symbol}", mach(*total)))
+        (!ledger.services.is_empty()).then(|| format!("spent {}", totals(&ledger)))
+    }
+
+    fn panel(&self) -> Option<Panel> {
+        let ledger = self.ledger.lock().unwrap();
+        let mut services: Vec<_> = ledger.services.iter().collect();
+        if services.is_empty() {
+            return None;
+        }
+        services.sort_by_key(|(_, service)| std::cmp::Reverse(service.spent));
+        let rows = services
+            .into_iter()
+            .map(|(host, service)| {
+                let left = ledger
+                    .sessions
+                    .get(host)
+                    .map(|session| session.spend().remaining)
+                    .filter(|left| *left > 0)
+                    .map_or_else(String::new, |left| format!("{} left", mach(left)));
+                vec![
+                    host.clone(),
+                    if service.model { "model" } else { "tool" }.to_owned(),
+                    format!("{} {}", mach(service.spent), service.symbol),
+                    format!("{}×", service.requests),
+                    format!("last {}", mach(service.last)),
+                    left,
+                ]
+            })
             .collect();
-        Some(format!(
-            "tools spent {} (last {} {symbol})",
-            totals.join(" + "),
-            mach(*last)
-        ))
+        Some(Panel {
+            title: format!("spend · {}", totals(&ledger)),
+            rows,
+        })
     }
 }
 
-fn paid_notice(
-    ledger: &Mutex<Ledger>,
+fn record(
+    ledger: &mut Ledger,
     context: &PaymentResponseContext,
     machine: Address,
+    models: &[String],
 ) -> Option<()> {
     let amount = context.amount?;
     let request = context
@@ -302,23 +331,35 @@ fn paid_notice(
         .or_else(|| request.get("currency"))?
         .as_str()?;
     let symbol = symbol(currency, machine);
-    let reference = context
-        .receipt
-        .as_ref()
-        .map_or("", |receipt| receipt.reference.as_str());
-    let (intent, label) = match context.challenge.intent.as_str() {
-        "session" => ("session", "channel"),
-        intent => (intent, "tx"),
-    };
-    let notice = format!(
-        "paid {} {symbol} to {} ({intent}, {label} {reference})",
-        mach(amount),
-        context.url.host_str().unwrap_or_default()
-    );
-    let mut ledger = ledger.lock().unwrap();
-    *ledger.totals.entry(symbol.clone()).or_default() += amount;
-    ledger.last = Some((amount, symbol));
-    notify(&mut ledger, notice);
+    let host = context.url.host_str()?.to_owned();
+    let model = models.contains(&host);
+    let service = ledger.services.entry(host.clone()).or_insert(Service {
+        model,
+        symbol: symbol.clone(),
+        spent: 0,
+        requests: 0,
+        last: 0,
+    });
+    service.spent += amount;
+    service.requests += 1;
+    service.last = amount;
+    if !model {
+        let reference = context
+            .receipt
+            .as_ref()
+            .map_or("", |receipt| receipt.reference.as_str());
+        let (intent, label) = match context.challenge.intent.as_str() {
+            "session" => ("session", "channel"),
+            intent => (intent, "tx"),
+        };
+        notify(
+            ledger,
+            format!(
+                "paid {} {symbol} to {host} ({intent}, {label} {reference})",
+                mach(amount)
+            ),
+        );
+    }
     Some(())
 }
 
@@ -347,6 +388,18 @@ fn notify(ledger: &mut Ledger, notice: String) {
     ledger
         .listeners
         .retain(|listener| listener.send(notice.clone()).is_ok());
+}
+
+fn totals(ledger: &Ledger) -> String {
+    let mut totals = BTreeMap::<&str, u128>::new();
+    for service in ledger.services.values() {
+        *totals.entry(&service.symbol).or_default() += service.spent;
+    }
+    totals
+        .into_iter()
+        .map(|(symbol, total)| format!("{} {symbol}", mach(total)))
+        .collect::<Vec<_>>()
+        .join(" + ")
 }
 
 fn symbol(currency: &str, machine: Address) -> String {
@@ -379,18 +432,21 @@ fn clients() -> Result<ModelClients> {
     let wallet = TempoAccountsProvider::from_default_store()?
         .with_expected_chain_id(CHAIN_ID)
         .with_preferred_currency(machine);
-    let payments = Payments::new(machine);
-    payments.pay_tools(&wallet, tool_deposit)?;
-    let notices = payments.clone();
-    let openai = Mpp::new(&wallet, OPENAI, deposit, &payments.events)?;
-    let claude = Mpp::new(&wallet, ANTHROPIC, deposit, &payments.events)?;
-    let meters = [("openai", openai.clone()), ("anthropic", claude.clone())];
-    let warm = meters.clone();
+    let mut models = Vec::new();
+    for url in [OPENAI, ANTHROPIC] {
+        models.extend(reqwest::Url::parse(url)?.host_str().map(str::to_owned));
+    }
+    let payments = Payments::new(machine, models.clone());
+    payments.pay_tools(&wallet, tool_deposit, models)?;
+    let openai = Mpp::new(&wallet, OPENAI, deposit, &payments)?;
+    let claude = Mpp::new(&wallet, ANTHROPIC, deposit, &payments)?;
+    let warm = (openai.clone(), claude.clone());
+    let (notices, status) = (payments.clone(), payments.clone());
     Ok(ModelClients::new()
         .openai_endpoint(OPENAI, openai)
         .claude_endpoint(ANTHROPIC, claude)
         .warm_up(move || {
-            let [(_, openai), (_, claude)] = warm.clone();
+            let (openai, claude) = warm.clone();
             async move {
                 futures_util::future::join(
                     openai.preconnect(format!("{OPENAI}/responses"), Model::Luna.as_str()),
@@ -400,14 +456,12 @@ fn clients() -> Result<ModelClients> {
             }
         })
         .notices(move || notices.notices())
-        .status(move || {
-            let parts: Vec<_> = meters
-                .iter()
-                .filter_map(|(name, mpp)| mpp.status(name))
-                .chain(payments.status())
-                .collect();
-            (!parts.is_empty()).then(|| parts.join(" | "))
-        }))
+        .status(move || status.status())
+        .panel(
+            "/spend",
+            "show or hide what models and tools have spent",
+            move || payments.panel(),
+        ))
 }
 
 fn main() -> ExitCode {
