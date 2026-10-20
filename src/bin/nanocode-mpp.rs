@@ -1,7 +1,8 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, VecDeque},
     process::ExitCode,
     sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
@@ -35,6 +36,10 @@ const MERCATOR: &str = "https://mercator.sh/mcp";
 const TEMPO_SERVICES: &str = "*.mpp.tempo.xyz";
 const MACH: u128 = 1_000_000;
 const PREPAID_REQUESTS: u32 = 2;
+const WATERFALL: Duration = Duration::from_secs(30);
+const WATERFALL_COLUMNS: usize = 30;
+const LIVE: Duration = Duration::from_secs(2);
+const BARS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 #[derive(Clone)]
 struct Mpp {
@@ -203,6 +208,40 @@ struct Service {
     spent: u128,
     requests: u64,
     last: u128,
+    charges: VecDeque<(Instant, i128)>,
+}
+
+impl Service {
+    fn charged(&mut self, change: i128) {
+        let now = Instant::now();
+        self.charges.push_back((now, change));
+        while self
+            .charges
+            .front()
+            .is_some_and(|(at, _)| now.duration_since(*at) > WATERFALL)
+        {
+            self.charges.pop_front();
+        }
+    }
+
+    fn buckets(&self, now: Instant) -> [i128; WATERFALL_COLUMNS] {
+        let mut buckets = [0; WATERFALL_COLUMNS];
+        let width = WATERFALL / WATERFALL_COLUMNS as u32;
+        for (at, change) in &self.charges {
+            let age = now.duration_since(*at);
+            if age < WATERFALL {
+                let column = (age.as_nanos() / width.as_nanos()) as usize;
+                buckets[WATERFALL_COLUMNS - 1 - column] += change;
+            }
+        }
+        buckets
+    }
+
+    fn live(&self, now: Instant) -> bool {
+        self.charges
+            .back()
+            .is_some_and(|(at, _)| now.duration_since(*at) < LIVE)
+    }
 }
 
 struct Paid<'a> {
@@ -335,18 +374,28 @@ impl Payments {
             return None;
         }
         services.sort_by_key(|(_, service)| std::cmp::Reverse(service.spent));
+        let now = Instant::now();
+        let buckets: Vec<_> = services
+            .iter()
+            .map(|(_, service)| service.buckets(now))
+            .collect();
+        let peak = buckets.iter().flatten().copied().max().unwrap_or(0).max(1);
+        let window: i128 = buckets.iter().flatten().filter(|change| **change > 0).sum();
+        let calls: u64 = services.iter().map(|(_, service)| service.requests).sum();
         let rows = services
-            .into_iter()
-            .map(|(host, service)| {
+            .iter()
+            .zip(&buckets)
+            .map(|((host, service), buckets)| {
                 let left = ledger
                     .sessions
-                    .get(host)
+                    .get(*host)
                     .map(|session| session.spend().remaining)
                     .filter(|left| *left > 0)
                     .map_or_else(String::new, |left| format!("{} left", mach(left)));
                 vec![
-                    host.clone(),
+                    format!("{} {host}", if service.live(now) { '●' } else { ' ' }),
                     if service.model { "model" } else { "tool" }.to_owned(),
+                    buckets.iter().map(|change| bar(*change, peak)).collect(),
                     format!("{} {}", mach(service.spent), service.symbol),
                     format!("{}×", service.requests),
                     format!("last {}", mach(service.last)),
@@ -354,9 +403,17 @@ impl Payments {
                 ]
             })
             .collect();
+        let rate = u128::try_from(window).unwrap_or(0) * 60 / WATERFALL.as_secs() as u128;
         Some(Panel {
-            title: format!("spend · {}", ledger.totals()),
+            title: format!(
+                "⚡ {} streamed · {calls} paid calls · {} services · {} MACH/min",
+                ledger.totals(),
+                services.len(),
+                mach(rate)
+            ),
             rows,
+            accent: vec![2],
+            refresh: buckets.iter().flatten().any(|change| *change != 0),
         })
     }
 }
@@ -377,10 +434,12 @@ impl Ledger {
             spent: 0,
             requests: 0,
             last: 0,
+            charges: VecDeque::new(),
         });
         service.spent += paid.amount;
         service.requests += 1;
         service.last = paid.amount;
+        service.charged(i128::try_from(paid.amount).unwrap_or(i128::MAX));
         if !model {
             let (intent, label) = match paid.challenge.intent.as_str() {
                 "session" => ("session", "channel"),
@@ -401,6 +460,7 @@ impl Ledger {
         };
         service.spent = service.spent.saturating_add_signed(change);
         service.last = service.last.saturating_add_signed(change);
+        service.charged(change);
     }
 
     fn notify(&mut self, notice: String) {
@@ -550,6 +610,14 @@ fn amount(name: &str, default: u128) -> Result<u128> {
             .parse()?),
         None => Ok(default),
     }
+}
+
+fn bar(change: i128, peak: i128) -> char {
+    if change <= 0 {
+        return BARS[0];
+    }
+    let level = ((change as f64 / peak as f64).sqrt() * (BARS.len() - 1) as f64).ceil() as usize;
+    BARS[level.clamp(1, BARS.len() - 1)]
 }
 
 fn mach(amount: u128) -> String {
