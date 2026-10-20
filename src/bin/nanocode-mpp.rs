@@ -539,7 +539,8 @@ fn clients() -> Result<ModelClients> {
         models.extend(reqwest::Url::parse(url)?.host_str().map(str::to_owned));
     }
     let payments = Payments::new(machine, models.clone());
-    let wallet = TempoAccountsProvider::from_default_store()?
+    let wallet = TempoAccountsProvider::from_default_store()
+        .map_err(|error| format!("{error}; log in with `tempo wallet login`"))?
         .with_expected_chain_id(CHAIN_ID)
         .with_preferred_currency(machine)
         .with_session_prepaid_requests(PREPAID_REQUESTS)
