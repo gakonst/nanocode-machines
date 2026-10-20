@@ -185,7 +185,7 @@ struct Payments {
     ledger: Arc<Mutex<Ledger>>,
     events: ClientEvents,
     failure: Arc<OnceLock<String>>,
-    _observers: Arc<[ClientEventSubscription; 2]>,
+    _observers: Arc<[ClientEventSubscription; 3]>,
 }
 
 #[derive(Default)]
@@ -221,7 +221,7 @@ impl Payments {
             models,
             ..Ledger::default()
         }));
-        let (paid, deposited) = (ledger.clone(), ledger.clone());
+        let (paid, deposited, updated) = (ledger.clone(), ledger.clone(), ledger.clone());
         let observers = [
             events.on_payment_response(move |context| {
                 if let Some(amount) = context.amount {
@@ -248,6 +248,10 @@ impl Payments {
                 let mut ledger = deposited.lock().unwrap();
                 let notice = deposit_notice(&context, ledger.machine);
                 ledger.notify(notice);
+                async {}
+            }),
+            events.on_payment_update(move |context| {
+                updated.lock().unwrap().update(&context.url, context.change);
                 async {}
             }),
         ];
@@ -389,6 +393,14 @@ impl Ledger {
             ));
         }
         Some(())
+    }
+
+    fn update(&mut self, url: &reqwest::Url, change: i128) {
+        let Some(service) = url.host_str().and_then(|host| self.services.get_mut(host)) else {
+            return;
+        };
+        service.spent = service.spent.saturating_add_signed(change);
+        service.last = service.last.saturating_add_signed(change);
     }
 
     fn notify(&mut self, notice: String) {
