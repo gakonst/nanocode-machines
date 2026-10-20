@@ -194,7 +194,7 @@ struct Paid<'a> {
     url: &'a reqwest::Url,
     challenge: &'a PaymentChallenge,
     amount: u128,
-    funding: Option<&'a Value>,
+    funding: Option<String>,
     reference: &'a str,
 }
 
@@ -215,8 +215,15 @@ impl Payments {
                         url: &context.url,
                         challenge: &context.challenge,
                         amount,
-                        funding: receipt
-                            .and_then(|receipt| receipt.extensions.get("fundingCurrency")),
+                        funding: context.funding_currency.clone().or_else(|| {
+                            Some(
+                                receipt?
+                                    .extensions
+                                    .get("fundingCurrency")?
+                                    .as_str()?
+                                    .to_owned(),
+                            )
+                        }),
                         reference: receipt.map_or("", |receipt| receipt.reference.as_str()),
                     });
                 }
@@ -338,8 +345,11 @@ impl Payments {
 impl Ledger {
     fn record(&mut self, paid: Paid<'_>) -> Option<()> {
         let request = paid.challenge.request.decode::<Value>().ok()?;
-        let currency = paid.funding.or_else(|| request.get("currency"))?.as_str()?;
-        let symbol = symbol(currency, self.machine);
+        let currency = match paid.funding {
+            Some(funding) => funding,
+            None => request.get("currency")?.as_str()?.to_owned(),
+        };
+        let symbol = symbol(&currency, self.machine);
         let host = paid.url.host_str()?.to_owned();
         let model = self.models.contains(&host);
         let service = self.services.entry(host.clone()).or_insert(Service {
@@ -416,6 +426,7 @@ impl McpPaymentProvider for McpPayments {
             credential: mpp::mcp::credential_value(pending.credential())
                 .map_err(|error| error.to_string())?,
             pending,
+            wallet: self.wallet.clone(),
             receipt: None,
             url: self.url.clone(),
             payments: self.payments.clone(),
@@ -424,6 +435,7 @@ impl McpPaymentProvider for McpPayments {
 }
 
 struct McpPending {
+    wallet: TempoAccountsProvider,
     pending: PendingPayment<TempoAccountsProvider>,
     credential: Value,
     receipt: Option<Value>,
@@ -454,7 +466,7 @@ impl McpPendingPayment for McpPending {
                 url: &self.url,
                 challenge,
                 amount,
-                funding: receipt.and_then(|receipt| receipt.get("fundingCurrency")),
+                funding: self.wallet.funding_currency(challenge),
                 reference: receipt
                     .and_then(|receipt| receipt.get("reference")?.as_str())
                     .unwrap_or_default(),
