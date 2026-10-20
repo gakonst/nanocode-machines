@@ -32,6 +32,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 const OPENAI: &str = "https://openai.mpp.tempo.xyz/v1";
 const ANTHROPIC: &str = "https://anthropic.mpp.tempo.xyz/v1/messages";
 const MERCATOR: &str = "https://mercator.sh/mcp";
+const TEMPO_SERVICES: &str = "*.mpp.tempo.xyz";
 const MACH: u128 = 1_000_000;
 const PREPAID_REQUESTS: u32 = 2;
 
@@ -260,13 +261,18 @@ impl Payments {
         let environment = proxy.environment();
         let (client, failed) = (reqwest::Client::new(), self.failure.clone());
         proxy.spawn(async move {
-            match directory::service_urls(&client, MPP_DIRECTORY_URL).await {
-                Ok(services) => AcceptPaymentPolicy::Origins(services),
-                Err(error) => {
+            let services = directory::service_urls(&client, MPP_DIRECTORY_URL)
+                .await
+                .unwrap_or_else(|error| {
                     let _ = failed.set(error.to_string());
-                    AcceptPaymentPolicy::Never
-                }
-            }
+                    Vec::new()
+                });
+            AcceptPaymentPolicy::Origins(
+                services
+                    .into_iter()
+                    .chain([TEMPO_SERVICES.to_owned()])
+                    .collect(),
+            )
         })?;
         Ok(environment)
     }
@@ -290,7 +296,7 @@ impl Payments {
 
     fn status(&self) -> Option<String> {
         if let Some(error) = self.failure.get() {
-            return Some(format!("tool payments off: {error}"));
+            return Some(format!("mpp.dev directory unavailable: {error}"));
         }
         let ledger = self.ledger.lock().unwrap();
         (!ledger.services.is_empty()).then(|| format!("spent {}", ledger.totals()))
