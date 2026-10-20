@@ -41,10 +41,17 @@ struct Mpp {
     wallet: TempoAccountsProvider,
     client: reqwest::Client,
     events: ClientEvents,
+    probe: (String, &'static str),
+    warm: Arc<tokio::sync::OnceCell<()>>,
 }
 
 impl Mpp {
-    fn new(wallet: &TempoAccountsProvider, service: &str, payments: &Payments) -> Result<Self> {
+    fn new(
+        wallet: &TempoAccountsProvider,
+        service: &str,
+        payments: &Payments,
+        probe: (String, &'static str),
+    ) -> Result<Self> {
         let wallet = payments.sessions(wallet, &reqwest::Url::parse(service)?)?;
         Ok(Self {
             wallet,
@@ -52,12 +59,19 @@ impl Mpp {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
             events: payments.events.clone(),
+            probe,
+            warm: Arc::default(),
         })
     }
 
-    async fn preconnect(self, url: String, model: &str) {
-        let body = serde_json::json!({ "model": model }).to_string();
-        let _ = self.wallet.preconnect(&self.client, &url, body).await;
+    async fn preconnect(&self) {
+        self.warm
+            .get_or_init(|| async {
+                let (url, model) = &self.probe;
+                let body = serde_json::json!({ "model": model }).to_string();
+                let _ = self.wallet.preconnect(&self.client, url, body).await;
+            })
+            .await;
     }
 }
 
@@ -68,6 +82,7 @@ impl Layer for Mpp {
         next: Next<'a>,
     ) -> BoxFuture<'a, std::result::Result<layer::Response, layer::Error>> {
         Box::pin(async move {
+            self.preconnect().await;
             let url = reqwest::Url::parse(&request.url)
                 .map_err(|error| layer::Error::new(error.to_string()).unsent(true))?;
             let mut paid = reqwest::Request::new(request.method, url);
@@ -554,8 +569,18 @@ fn clients() -> Result<ModelClients> {
     let wallet = wallet
         .with_session_default_deposit(deposit)
         .with_session_top_up_amount(deposit);
-    let openai = Mpp::new(&wallet, OPENAI, &payments)?;
-    let claude = Mpp::new(&wallet, ANTHROPIC, &payments)?;
+    let openai = Mpp::new(
+        &wallet,
+        OPENAI,
+        &payments,
+        (format!("{OPENAI}/responses"), Model::Luna.as_str()),
+    )?;
+    let claude = Mpp::new(
+        &wallet,
+        ANTHROPIC,
+        &payments,
+        (ANTHROPIC.to_owned(), ClaudeModel::Haiku55.as_str()),
+    )?;
     let warm = (openai.clone(), claude.clone());
     let (notices, status) = (payments.clone(), payments.clone());
     Ok(ModelClients::new()
@@ -564,11 +589,7 @@ fn clients() -> Result<ModelClients> {
         .warm_up(move || {
             let (openai, claude) = warm.clone();
             async move {
-                futures_util::future::join(
-                    openai.preconnect(format!("{OPENAI}/responses"), Model::Luna.as_str()),
-                    claude.preconnect(ANTHROPIC.to_owned(), ClaudeModel::Haiku55.as_str()),
-                )
-                .await;
+                futures_util::future::join(openai.preconnect(), claude.preconnect()).await;
             }
         })
         .tool_environment(tool_environment)
