@@ -4,29 +4,34 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
+use async_trait::async_trait;
 use futures_util::Stream;
 use mpp::{
-    Address,
+    Address, PaymentChallenge,
     client::{
         AcceptPaymentPolicy, ClientEventSubscription, ClientEvents, DEFAULT_MAX_PAYMENT_RETRIES,
-        DepositContext, Exchange, FlowError, ForwardProxy, PaymentProvider, PaymentResponseContext,
-        TempoAccountsProvider, TempoSessionProvider,
+        DepositContext, Exchange, FlowError, ForwardProxy, PaymentContext, PaymentProvider,
+        PendingPayment, TempoAccountsProvider, TempoSessionProvider,
         directory::{self, MPP_DIRECTORY_URL},
     },
+    mcp::client::McpPayment,
     protocol::methods::tempo::{CHAIN_ID, USDC, machine_token},
 };
 use nanocode::{
     ClaudeModel, Model,
     http::{self as layer, BoxFuture, Event, EventHook, Layer, Next},
+    tools::mcp::{McpPaymentProvider, McpPendingPayment, McpServer},
 };
 use nanocode_cli::{ModelClients, Panel};
 use reqwest::ResponseBuilderExt;
+use serde_json::Value;
 use tokio::sync::mpsc::UnboundedSender;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 const OPENAI: &str = "https://openai.mpp.tempo.xyz/v1";
 const ANTHROPIC: &str = "https://anthropic.mpp.tempo.xyz/v1/messages";
+const MERCATOR: &str = "https://mercator.sh/mcp";
 const MACH: u128 = 1_000_000;
 const PREPAID_REQUESTS: u32 = 2;
 
@@ -38,18 +43,11 @@ struct Mpp {
 }
 
 impl Mpp {
-    fn new(
-        wallet: &TempoAccountsProvider,
-        service: &str,
-        deposit: u128,
-        payments: &Payments,
-    ) -> Result<Self> {
-        let service = reqwest::Url::parse(service)?;
-        let wallet = payments.sessions(wallet, &service, deposit)?;
+    fn new(wallet: &TempoAccountsProvider, service: &str, payments: &Payments) -> Result<Self> {
+        let wallet = payments.sessions(wallet, &reqwest::Url::parse(service)?)?;
         Ok(Self {
             wallet,
             client: reqwest::Client::builder()
-                .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
             events: payments.events.clone(),
@@ -176,6 +174,8 @@ struct Payments {
 
 #[derive(Default)]
 struct Ledger {
+    machine: Address,
+    models: Vec<String>,
     services: BTreeMap<String, Service>,
     sessions: HashMap<String, TempoSessionProvider>,
     listeners: Vec<UnboundedSender<String>>,
@@ -189,21 +189,42 @@ struct Service {
     last: u128,
 }
 
+struct Paid<'a> {
+    url: &'a reqwest::Url,
+    challenge: &'a PaymentChallenge,
+    amount: u128,
+    funding: Option<&'a Value>,
+    reference: &'a str,
+}
+
 impl Payments {
     fn new(machine: Address, models: Vec<String>) -> Self {
         let events = ClientEvents::default();
-        let ledger = Arc::new(Mutex::new(Ledger::default()));
+        let ledger = Arc::new(Mutex::new(Ledger {
+            machine,
+            models,
+            ..Ledger::default()
+        }));
         let (paid, deposited) = (ledger.clone(), ledger.clone());
         let observers = [
             events.on_payment_response(move |context| {
-                record(&mut paid.lock().unwrap(), &context, machine, &models);
+                if let Some(amount) = context.amount {
+                    let receipt = context.receipt.as_deref();
+                    paid.lock().unwrap().record(Paid {
+                        url: &context.url,
+                        challenge: &context.challenge,
+                        amount,
+                        funding: receipt
+                            .and_then(|receipt| receipt.extensions.get("fundingCurrency")),
+                        reference: receipt.map_or("", |receipt| receipt.reference.as_str()),
+                    });
+                }
                 async {}
             }),
             events.on_deposit(move |context| {
-                notify(
-                    &mut deposited.lock().unwrap(),
-                    deposit_notice(&context, machine),
-                );
+                let mut ledger = deposited.lock().unwrap();
+                let notice = deposit_notice(&context, ledger.machine);
+                ledger.notify(notice);
                 async {}
             }),
         ];
@@ -219,15 +240,8 @@ impl Payments {
         &self,
         wallet: &TempoAccountsProvider,
         service: &reqwest::Url,
-        deposit: u128,
     ) -> Result<TempoAccountsProvider> {
-        let wallet = wallet
-            .clone()
-            .with_sqlite_session_store(service)?
-            .with_session_prepaid_requests(PREPAID_REQUESTS)
-            .with_session_default_deposit(deposit)
-            .with_session_top_up_amount(deposit)
-            .with_session_events(self.events.clone());
+        let wallet = wallet.clone().with_sqlite_session_store(service)?;
         let host = service.host_str().unwrap_or_default().to_owned();
         let session = wallet.session()?;
         self.ledger.lock().unwrap().sessions.insert(host, session);
@@ -237,20 +251,14 @@ impl Payments {
     fn pay_tools(
         &self,
         wallet: &TempoAccountsProvider,
-        deposit: u128,
         models: Vec<String>,
-    ) -> Result<()> {
+    ) -> Result<Vec<(&'static str, String)>> {
         let (payments, tools) = (self.clone(), wallet.clone());
-        let proxy = ForwardProxy::bind(move |url| payments.sessions(&tools, url, deposit))?
+        let proxy = ForwardProxy::bind(move |url| payments.sessions(&tools, url))?
             .bypass(models)
             .events(self.events.clone());
-        for (name, value) in proxy.environment() {
-            unsafe { std::env::set_var(name, value) };
-        }
-        let (client, failed) = (
-            reqwest::Client::builder().no_proxy().build()?,
-            self.failure.clone(),
-        );
+        let environment = proxy.environment();
+        let (client, failed) = (reqwest::Client::new(), self.failure.clone());
         proxy.spawn(async move {
             match directory::service_urls(&client, MPP_DIRECTORY_URL).await {
                 Ok(services) => AcceptPaymentPolicy::Origins(services),
@@ -260,7 +268,16 @@ impl Payments {
                 }
             }
         })?;
-        Ok(())
+        Ok(environment)
+    }
+
+    fn mcp(&self, wallet: &TempoAccountsProvider, url: &str) -> Result<McpServer> {
+        Ok(McpServer::http(url).payment_provider(Arc::new(McpPayments {
+            wallet: wallet.clone(),
+            client: reqwest::Client::new(),
+            url: url.parse()?,
+            payments: self.clone(),
+        })))
     }
 
     fn notices(&self) -> impl Stream<Item = String> + use<> {
@@ -276,7 +293,7 @@ impl Payments {
             return Some(format!("tool payments off: {error}"));
         }
         let ledger = self.ledger.lock().unwrap();
-        (!ledger.services.is_empty()).then(|| format!("spent {}", totals(&ledger)))
+        (!ledger.services.is_empty()).then(|| format!("spent {}", ledger.totals()))
     }
 
     fn panel(&self) -> Option<Panel> {
@@ -306,61 +323,149 @@ impl Payments {
             })
             .collect();
         Some(Panel {
-            title: format!("spend · {}", totals(&ledger)),
+            title: format!("spend · {}", ledger.totals()),
             rows,
         })
     }
 }
 
-fn record(
-    ledger: &mut Ledger,
-    context: &PaymentResponseContext,
-    machine: Address,
-    models: &[String],
-) -> Option<()> {
-    let amount = context.amount?;
-    let request = context
-        .challenge
-        .request
-        .decode::<serde_json::Value>()
-        .ok()?;
-    let currency = context
-        .receipt
-        .as_ref()
-        .and_then(|receipt| receipt.extensions.get("fundingCurrency"))
-        .or_else(|| request.get("currency"))?
-        .as_str()?;
-    let symbol = symbol(currency, machine);
-    let host = context.url.host_str()?.to_owned();
-    let model = models.contains(&host);
-    let service = ledger.services.entry(host.clone()).or_insert(Service {
-        model,
-        symbol: symbol.clone(),
-        spent: 0,
-        requests: 0,
-        last: 0,
-    });
-    service.spent += amount;
-    service.requests += 1;
-    service.last = amount;
-    if !model {
-        let reference = context
-            .receipt
-            .as_ref()
-            .map_or("", |receipt| receipt.reference.as_str());
-        let (intent, label) = match context.challenge.intent.as_str() {
-            "session" => ("session", "channel"),
-            intent => (intent, "tx"),
-        };
-        notify(
-            ledger,
-            format!(
-                "paid {} {symbol} to {host} ({intent}, {label} {reference})",
-                mach(amount)
-            ),
-        );
+impl Ledger {
+    fn record(&mut self, paid: Paid<'_>) -> Option<()> {
+        let request = paid.challenge.request.decode::<Value>().ok()?;
+        let currency = paid.funding.or_else(|| request.get("currency"))?.as_str()?;
+        let symbol = symbol(currency, self.machine);
+        let host = paid.url.host_str()?.to_owned();
+        let model = self.models.contains(&host);
+        let service = self.services.entry(host.clone()).or_insert(Service {
+            model,
+            symbol: symbol.clone(),
+            spent: 0,
+            requests: 0,
+            last: 0,
+        });
+        service.spent += paid.amount;
+        service.requests += 1;
+        service.last = paid.amount;
+        if !model {
+            let (intent, label) = match paid.challenge.intent.as_str() {
+                "session" => ("session", "channel"),
+                intent => (intent, "tx"),
+            };
+            self.notify(format!(
+                "paid {} {symbol} to {host} ({intent}, {label} {})",
+                mach(paid.amount),
+                paid.reference
+            ));
+        }
+        Some(())
     }
-    Some(())
+
+    fn notify(&mut self, notice: String) {
+        self.listeners
+            .retain(|listener| listener.send(notice.clone()).is_ok());
+    }
+
+    fn totals(&self) -> String {
+        let mut totals = BTreeMap::<&str, u128>::new();
+        for service in self.services.values() {
+            *totals.entry(&service.symbol).or_default() += service.spent;
+        }
+        totals
+            .into_iter()
+            .map(|(symbol, total)| format!("{} {symbol}", mach(total)))
+            .collect::<Vec<_>>()
+            .join(" + ")
+    }
+}
+
+struct McpPayments {
+    wallet: TempoAccountsProvider,
+    client: reqwest::Client,
+    url: reqwest::Url,
+    payments: Payments,
+}
+
+#[async_trait]
+impl McpPaymentProvider for McpPayments {
+    async fn prepare(
+        &self,
+        payment_required: &Value,
+    ) -> std::result::Result<Option<Box<dyn McpPendingPayment>>, String> {
+        let Some(challenges) = mpp::mcp::extract_challenges_from_data(payment_required) else {
+            return Ok(None);
+        };
+        let context = PaymentContext {
+            url: self.url.clone(),
+            headers: Default::default(),
+            http_client: Some(self.client.clone()),
+        };
+        let pending = McpPayment::new(self.wallet.clone(), context)
+            .prepare(&challenges)
+            .await
+            .map_err(|error| error.to_string())?;
+        let Some(pending) = pending else {
+            return Ok(None);
+        };
+        Ok(Some(Box::new(McpPending {
+            credential: mpp::mcp::credential_value(pending.credential())
+                .map_err(|error| error.to_string())?,
+            pending,
+            receipt: None,
+            url: self.url.clone(),
+            payments: self.payments.clone(),
+        })))
+    }
+}
+
+struct McpPending {
+    pending: PendingPayment<TempoAccountsProvider>,
+    credential: Value,
+    receipt: Option<Value>,
+    url: reqwest::Url,
+    payments: Payments,
+}
+
+#[async_trait]
+impl McpPendingPayment for McpPending {
+    fn credential(&self) -> &Value {
+        &self.credential
+    }
+
+    fn receipt(&mut self, receipt: &Value) {
+        self.receipt = Some(receipt.clone());
+    }
+
+    async fn commit(self: Box<Self>) -> std::result::Result<(), String> {
+        let challenge = self.pending.challenge();
+        let amount = challenge
+            .request
+            .decode::<Value>()
+            .ok()
+            .and_then(|request| request.get("amount")?.as_str()?.parse().ok());
+        if let Some(amount) = amount {
+            let receipt = self.receipt.as_ref();
+            self.payments.ledger.lock().unwrap().record(Paid {
+                url: &self.url,
+                challenge,
+                amount,
+                funding: receipt.and_then(|receipt| receipt.get("fundingCurrency")),
+                reference: receipt
+                    .and_then(|receipt| receipt.get("reference")?.as_str())
+                    .unwrap_or_default(),
+            });
+        }
+        self.pending
+            .commit()
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    async fn rollback(self: Box<Self>) -> std::result::Result<(), String> {
+        self.pending
+            .rollback()
+            .await
+            .map_err(|error| error.to_string())
+    }
 }
 
 fn deposit_notice(context: &DepositContext, machine: Address) -> String {
@@ -382,24 +487,6 @@ fn deposit_notice(context: &DepositContext, machine: Address) -> String {
             mach(context.deposit)
         ),
     }
-}
-
-fn notify(ledger: &mut Ledger, notice: String) {
-    ledger
-        .listeners
-        .retain(|listener| listener.send(notice.clone()).is_ok());
-}
-
-fn totals(ledger: &Ledger) -> String {
-    let mut totals = BTreeMap::<&str, u128>::new();
-    for service in ledger.services.values() {
-        *totals.entry(&service.symbol).or_default() += service.spent;
-    }
-    totals
-        .into_iter()
-        .map(|(symbol, total)| format!("{} {symbol}", mach(total)))
-        .collect::<Vec<_>>()
-        .join(" + ")
 }
 
 fn symbol(currency: &str, machine: Address) -> String {
@@ -429,17 +516,27 @@ fn clients() -> Result<ModelClients> {
     let deposit = amount("NANOCODE_MPP_DEPOSIT", 2 * MACH)?;
     let tool_deposit = amount("NANOCODE_MPP_TOOL_DEPOSIT", MACH / 10)?;
     let machine = machine_token::token(CHAIN_ID).ok_or("MACH is not deployed on Tempo mainnet")?;
-    let wallet = TempoAccountsProvider::from_default_store()?
-        .with_expected_chain_id(CHAIN_ID)
-        .with_preferred_currency(machine);
     let mut models = Vec::new();
     for url in [OPENAI, ANTHROPIC] {
         models.extend(reqwest::Url::parse(url)?.host_str().map(str::to_owned));
     }
     let payments = Payments::new(machine, models.clone());
-    payments.pay_tools(&wallet, tool_deposit, models)?;
-    let openai = Mpp::new(&wallet, OPENAI, deposit, &payments)?;
-    let claude = Mpp::new(&wallet, ANTHROPIC, deposit, &payments)?;
+    let wallet = TempoAccountsProvider::from_default_store()?
+        .with_expected_chain_id(CHAIN_ID)
+        .with_preferred_currency(machine)
+        .with_session_prepaid_requests(PREPAID_REQUESTS)
+        .with_session_events(payments.events.clone());
+    let tool_wallet = wallet
+        .clone()
+        .with_session_default_deposit(tool_deposit)
+        .with_session_top_up_amount(tool_deposit);
+    let tool_environment = payments.pay_tools(&tool_wallet, models)?;
+    let mercator = payments.mcp(&wallet, MERCATOR)?;
+    let wallet = wallet
+        .with_session_default_deposit(deposit)
+        .with_session_top_up_amount(deposit);
+    let openai = Mpp::new(&wallet, OPENAI, &payments)?;
+    let claude = Mpp::new(&wallet, ANTHROPIC, &payments)?;
     let warm = (openai.clone(), claude.clone());
     let (notices, status) = (payments.clone(), payments.clone());
     Ok(ModelClients::new()
@@ -455,6 +552,8 @@ fn clients() -> Result<ModelClients> {
                 .await;
             }
         })
+        .tool_environment(tool_environment)
+        .mcp_server("mercator", mercator)
         .notices(move || notices.notices())
         .status(move || status.status())
         .panel(
