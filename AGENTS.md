@@ -33,7 +33,7 @@ Since T12 (mainnet 2026-10-13), TIP-1095 checks a TIP-1034 channel's TIP-403 pol
 ## Development
 
 - Do not add code comments, doc comments, README files, tests or test-only dependencies. The user maintains README files.
-- Nanocode, its CLI (`nanocode-cli`) and mpp-rs are pinned by git revision; `nanocode` and `nanocode-cli` share one gakonst/nanocode revision, which must include `ModelClients::openai_endpoint`, `notices`, `panel` (with `Panel::accent` and `Panel::refresh`), `tool_environment`, `mcp_server`, per-agent usage in subagent reports and `usage.cost` parsing, and mpp-rs points at a tempoxyz/mpp-rs main revision that includes #581 through #602 with the `forward-proxy` feature. If cargo cannot fetch a revision, set `CARGO_NET_GIT_FETCH_WITH_CLI=true`.
+- Nanocode, its CLI (`nanocode-cli`) and mpp-rs are pinned by git revision; `nanocode` and `nanocode-cli` share one gakonst/nanocode revision, which must include `ModelClients::openai_endpoint`, `notices`, `panel` (with `Panel::accent` and `Panel::refresh`), `tool_environment`, `mcp_server`, per-agent usage in subagent reports and `usage.cost` parsing, and mpp-rs points at a tempoxyz/mpp-rs main revision that includes #581 through #603 with the `forward-proxy` feature. If cargo cannot fetch a revision, set `CARGO_NET_GIT_FETCH_WITH_CLI=true`.
 - Check with `cargo fmt --check`, `cargo check --bins` and `cargo clippy --all-targets`.
 - The ignored `output/validation` consumer was written against the removed `MppLayer` library and no longer builds. Real payments spend the wallet's funds; run them only with the wallet owner's approval.
 - 2026-10-19 mainnet results with wallet `0x9759…e122` and its P-256 access key:
