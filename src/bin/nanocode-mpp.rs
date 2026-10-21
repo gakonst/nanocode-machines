@@ -8,11 +8,12 @@ use std::{
 use async_trait::async_trait;
 use futures_util::Stream;
 use mpp::{
-    Address, PaymentChallenge,
+    Address, MppError, PaymentChallenge, PaymentCredential,
     client::{
         AcceptPaymentPolicy, ClientEventSubscription, ClientEvents, DEFAULT_MAX_PAYMENT_RETRIES,
-        DepositContext, Exchange, FlowError, ForwardProxy, PaymentContext, PaymentProvider,
-        PendingPayment, TempoAccountsProvider, TempoSessionProvider,
+        DepositContext, Exchange, FlowError, ForwardProxy, ManagementFuture, ManagementTransport,
+        PaymentContext, PaymentProvider, PendingPayment, TempoAccountsProvider,
+        TempoSessionProvider,
         directory::{self, MPP_DIRECTORY_URL},
     },
     mcp::client::McpPayment,
@@ -21,7 +22,7 @@ use mpp::{
 use nanocode::{
     ClaudeModel, Model,
     http::{self as layer, BoxFuture, Event, EventHook, Layer, Next},
-    tools::mcp::{McpPaymentProvider, McpPendingPayment, McpServer},
+    tools::mcp::{McpPaymentManagement, McpPaymentProvider, McpPendingPayment, McpServer},
 };
 use nanocode_cli::{ModelClients, Panel};
 use reqwest::ResponseBuilderExt;
@@ -343,10 +344,10 @@ impl Payments {
     }
 
     fn mcp(&self, wallet: &TempoAccountsProvider, url: &str) -> Result<McpServer> {
-        Ok(McpServer::http(url).payment_provider(Arc::new(McpPayments {
-            wallet: wallet.clone(),
-            client: reqwest::Client::new(),
-            url: url.parse()?,
+        let url: reqwest::Url = url.parse()?;
+        Ok(McpServer::http(url.as_str()).payment_provider(Arc::new(McpPayments {
+            wallet: self.sessions(wallet, &url)?,
+            url,
             payments: self.clone(),
         })))
     }
@@ -483,7 +484,6 @@ impl Ledger {
 
 struct McpPayments {
     wallet: TempoAccountsProvider,
-    client: reqwest::Client,
     url: reqwest::Url,
     payments: Payments,
 }
@@ -494,18 +494,41 @@ impl McpPaymentProvider for McpPayments {
         &self,
         payment_required: &Value,
     ) -> std::result::Result<Option<Box<dyn McpPendingPayment>>, String> {
+        self.pay(payment_required, None).await
+    }
+
+    async fn prepare_with_management(
+        &self,
+        payment_required: &Value,
+        management: &dyn McpPaymentManagement,
+    ) -> std::result::Result<Option<Box<dyn McpPendingPayment>>, String> {
+        self.pay(payment_required, Some(&ToolCall(management)))
+            .await
+    }
+}
+
+impl McpPayments {
+    async fn pay(
+        &self,
+        payment_required: &Value,
+        management: Option<&ToolCall<'_>>,
+    ) -> std::result::Result<Option<Box<dyn McpPendingPayment>>, String> {
         let Some(challenges) = mpp::mcp::extract_challenges_from_data(payment_required) else {
             return Ok(None);
         };
-        let context = PaymentContext {
-            url: self.url.clone(),
-            headers: Default::default(),
-            http_client: Some(self.client.clone()),
-        };
-        let pending = McpPayment::new(self.wallet.clone(), context)
-            .prepare(&challenges)
-            .await
-            .map_err(|error| error.to_string())?;
+        let payment = McpPayment::new(
+            self.wallet.clone(),
+            PaymentContext {
+                url: self.url.clone(),
+                headers: Default::default(),
+                http_client: None,
+            },
+        );
+        let pending = match management {
+            Some(management) => payment.prepare_with_management(&challenges, management).await,
+            None => payment.prepare(&challenges).await,
+        }
+        .map_err(|error| error.to_string())?;
         let Some(pending) = pending else {
             return Ok(None);
         };
@@ -513,6 +536,7 @@ impl McpPaymentProvider for McpPayments {
             credential: mpp::mcp::credential_value(pending.credential())
                 .map_err(|error| error.to_string())?,
             pending,
+            payment,
             wallet: self.wallet.clone(),
             receipt: None,
             url: self.url.clone(),
@@ -521,9 +545,29 @@ impl McpPaymentProvider for McpPayments {
     }
 }
 
+struct ToolCall<'a>(&'a dyn McpPaymentManagement);
+
+impl ManagementTransport for ToolCall<'_> {
+    fn send<'a>(
+        &'a self,
+        _challenge: &'a PaymentChallenge,
+        credential: &'a PaymentCredential,
+    ) -> ManagementFuture<'a> {
+        Box::pin(async move {
+            let receipt = self
+                .0
+                .send(mpp::mcp::credential_value(credential)?)
+                .await
+                .map_err(MppError::Http)?;
+            Ok(receipt.and_then(|receipt| serde_json::from_value(receipt).ok()))
+        })
+    }
+}
+
 struct McpPending {
     wallet: TempoAccountsProvider,
     pending: PendingPayment<TempoAccountsProvider>,
+    payment: McpPayment<TempoAccountsProvider>,
     credential: Value,
     receipt: Option<Value>,
     url: reqwest::Url,
@@ -542,11 +586,18 @@ impl McpPendingPayment for McpPending {
 
     async fn commit(self: Box<Self>) -> std::result::Result<(), String> {
         let challenge = self.pending.challenge();
-        let amount = challenge
-            .request
-            .decode::<Value>()
-            .ok()
-            .and_then(|request| request.get("amount")?.as_str()?.parse().ok());
+        let charged = self
+            .receipt
+            .clone()
+            .and_then(|receipt| serde_json::from_value(receipt).ok())
+            .and_then(|receipt| self.payment.record_receipt(challenge, &receipt));
+        let amount = charged.or_else(|| {
+            challenge
+                .request
+                .decode::<Value>()
+                .ok()
+                .and_then(|request| request.get("amount")?.as_str()?.parse().ok())
+        });
         if let Some(amount) = amount {
             let receipt = self.receipt.as_ref();
             self.payments.ledger.lock().unwrap().record(Paid {
