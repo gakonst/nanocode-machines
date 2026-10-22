@@ -205,6 +205,7 @@ struct Ledger {
 }
 
 struct Service {
+    host: String,
     model: bool,
     symbol: String,
     spent: u128,
@@ -390,7 +391,7 @@ impl Payments {
             .map(|((host, service), buckets)| {
                 let left = ledger
                     .sessions
-                    .get(*host)
+                    .get(&service.host)
                     .map(|session| session.spend().remaining)
                     .filter(|left| *left > 0)
                     .map_or_else(String::new, |left| format!("{} left", mach(left)));
@@ -430,7 +431,14 @@ impl Ledger {
         let symbol = symbol(&currency, self.machine);
         let host = paid.url.host_str()?.to_owned();
         let model = self.models.contains(&host);
-        let service = self.services.entry(host.clone()).or_insert(Service {
+        let key = match paid.challenge.description.as_deref() {
+            Some(description) if !model && !description.trim().is_empty() => {
+                format!("{host} · {description}")
+            }
+            _ => host.clone(),
+        };
+        let service = self.services.entry(key.clone()).or_insert(Service {
+            host: host.clone(),
             model,
             symbol: symbol.clone(),
             spent: 0,
@@ -448,7 +456,7 @@ impl Ledger {
                 intent => (intent, "tx"),
             };
             self.notify(format!(
-                "paid {} {symbol} to {host} ({intent}, {label} {})",
+                "paid {} {symbol} to {key} ({intent}, {label} {})",
                 mach(paid.amount),
                 paid.reference
             ));
