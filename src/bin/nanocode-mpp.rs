@@ -34,6 +34,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 const OPENAI: &str = "https://openai.mpp.tempo.xyz/v1";
 const ANTHROPIC: &str = "https://anthropic.mpp.tempo.xyz/v1/messages";
 const MERCATOR: &str = "https://mercator.sh/mcp";
+const GATEWAY: &str = "https://gateway.tempo-dev.workers.dev/mcp";
 const TEMPO_SERVICES: &str = "*.mpp.tempo.xyz";
 const MACH: u128 = 1_000_000;
 const PREPAID_REQUESTS: u32 = 2;
@@ -697,6 +698,7 @@ fn clients() -> Result<ModelClients> {
         .with_session_top_up_amount(tool_deposit);
     let tool_environment = payments.pay_tools(&tool_wallet, models)?;
     let mercator = payments.mcp(&wallet, MERCATOR)?;
+    let gateway = payments.mcp(&tool_wallet, GATEWAY)?;
     let wallet = wallet
         .with_session_default_deposit(deposit)
         .with_session_top_up_amount(deposit);
@@ -725,6 +727,7 @@ fn clients() -> Result<ModelClients> {
         })
         .tool_environment(tool_environment)
         .mcp_server("mercator", mercator)
+        .mcp_server("gateway", gateway)
         .notices(move || notices.notices())
         .status(move || status.status())
         .panel(
