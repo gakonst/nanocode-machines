@@ -35,6 +35,7 @@ const OPENAI: &str = "https://openai.mpp.tempo.xyz/v1";
 const ANTHROPIC: &str = "https://anthropic.mpp.tempo.xyz/v1/messages";
 const MERCATOR: &str = "https://mercator.sh/mcp";
 const GATEWAY: &str = "https://gateway.tempo-dev.workers.dev/mcp";
+const GATEWAY_ORIGIN: &str = "https://gateway.tempo-dev.workers.dev";
 const TEMPO_SERVICES: &str = "*.mpp.tempo.xyz";
 const MACH: u128 = 1_000_000;
 const PREPAID_REQUESTS: u32 = 2;
@@ -338,7 +339,7 @@ impl Payments {
             AcceptPaymentPolicy::Origins(
                 services
                     .into_iter()
-                    .chain([TEMPO_SERVICES.to_owned()])
+                    .chain([TEMPO_SERVICES.to_owned(), GATEWAY_ORIGIN.to_owned()])
                     .collect(),
             )
         })?;
