@@ -51,7 +51,6 @@ struct Mpp {
     events: ClientEvents,
     probe: (String, &'static str),
     warm: Arc<tokio::sync::OnceCell<()>>,
-    model: Option<String>,
 }
 
 impl Mpp {
@@ -70,7 +69,6 @@ impl Mpp {
             events: payments.events.clone(),
             probe,
             warm: Arc::default(),
-            model: None,
         })
     }
 
@@ -93,15 +91,6 @@ impl Layer for Mpp {
     ) -> BoxFuture<'a, std::result::Result<layer::Response, layer::Error>> {
         Box::pin(async move {
             self.preconnect().await;
-            let mut request = request;
-            if let Some(model) = &self.model {
-                let mut body: Value = serde_json::from_slice(&request.body).unwrap_or_default();
-                if let Some(object) = body.as_object_mut() {
-                    object.insert("model".to_owned(), model.as_str().into());
-                    request.body = serde_json::to_vec(&body).unwrap_or(request.body);
-                    request.headers.remove(http::header::CONTENT_LENGTH);
-                }
-            }
             let url = reqwest::Url::parse(&request.url)
                 .map_err(|error| layer::Error::new(error.to_string()).unsent(true))?;
             let mut paid = reqwest::Request::new(request.method, url);
@@ -359,11 +348,13 @@ impl Payments {
 
     fn mcp(&self, wallet: &TempoAccountsProvider, url: &str) -> Result<McpServer> {
         let url: reqwest::Url = url.parse()?;
-        Ok(McpServer::http(url.as_str()).payment_provider(Arc::new(McpPayments {
-            wallet: self.sessions(wallet, &url)?,
-            url,
-            payments: self.clone(),
-        })))
+        Ok(
+            McpServer::http(url.as_str()).payment_provider(Arc::new(McpPayments {
+                wallet: self.sessions(wallet, &url)?,
+                url,
+                payments: self.clone(),
+            })),
+        )
     }
 
     fn notices(&self) -> impl Stream<Item = String> + use<> {
@@ -546,7 +537,11 @@ impl McpPayments {
             },
         );
         let pending = match management {
-            Some(management) => payment.prepare_with_management(&challenges, management).await,
+            Some(management) => {
+                payment
+                    .prepare_with_management(&challenges, management)
+                    .await
+            }
             None => payment.prepare(&challenges).await,
         }
         .map_err(|error| error.to_string())?;
@@ -699,14 +694,23 @@ fn mach(amount: u128) -> String {
 
 fn endpoint_clients(url: &str) -> Result<ModelClients> {
     nanocode::codex::transport::install_default_rustls_crypto_provider();
-    let endpoint = format!("{}/v1", url.trim_end_matches('/'));
-    let model = std::env::var("CUSTOM_MODEL").ok().filter(|model| !model.trim().is_empty());
+    let url = url.trim_end_matches('/');
+    let endpoint = match url.contains("://") {
+        true => format!("{url}/v1"),
+        false => format!("https://{url}/v1"),
+    };
+    let models = served_models(&endpoint)?;
     let (chain, currency) = match std::env::var("MPP_NETWORK").as_deref() {
         Ok("mainnet") => (CHAIN_ID, USDC),
         Ok("testnet") | Err(_) => (42431, PATH_USD),
-        Ok(other) => return Err(format!("MPP_NETWORK must be mainnet or testnet, not {other}").into()),
+        Ok(other) => {
+            return Err(format!("MPP_NETWORK must be mainnet or testnet, not {other}").into());
+        }
     };
-    let host = reqwest::Url::parse(&endpoint)?.host_str().unwrap_or_default().to_owned();
+    let host = reqwest::Url::parse(&endpoint)?
+        .host_str()
+        .unwrap_or_default()
+        .to_owned();
     let payments = Payments::new(Address::ZERO, vec![host.clone()]);
     let wallet = TempoAccountsProvider::from_default_store()
         .map_err(|error| format!("{error}; log in with `tempo wallet login`"))?
@@ -716,25 +720,70 @@ fn endpoint_clients(url: &str) -> Result<ModelClients> {
         .with_session_events(payments.events.clone())
         .with_session_default_deposit(amount("NANOCODE_MPP_DEPOSIT", MACH)?)
         .with_session_top_up_amount(amount("NANOCODE_MPP_DEPOSIT", MACH)?);
-    let mut layer = Mpp::new(&wallet, &endpoint, &payments, (format!("{endpoint}/responses"), "probe"))?;
-    layer.model = model;
-    let origin = reqwest::Url::parse(&endpoint)?.origin().ascii_serialization();
+    let mut layer = Mpp::new(
+        &wallet,
+        &endpoint,
+        &payments,
+        (format!("{endpoint}/responses"), models[0].as_str()),
+    )?;
+    let origin = reqwest::Url::parse(&endpoint)?
+        .origin()
+        .ascii_serialization();
     let namespace = match session_slot(&origin)?.as_str() {
         "0" => origin,
         session => format!("{origin}#{session}"),
     };
     let store = mpp::client::tempo::session::store::SqliteChannelStore::open(
-        mpp::client::tempo::session::store::SqliteChannelStoreOptions { namespace, path: None, request_url: Some(endpoint.clone()) },
+        mpp::client::tempo::session::store::SqliteChannelStoreOptions {
+            namespace,
+            path: None,
+            request_url: Some(endpoint.clone()),
+        },
     )?;
     layer.wallet = layer.wallet.clone().with_session_store(Arc::new(store));
     let session = layer.wallet.session()?;
-    payments.ledger.lock().unwrap().sessions.insert(host, session);
+    payments
+        .ledger
+        .lock()
+        .unwrap()
+        .sessions
+        .insert(host, session);
     let (notices, status) = (payments.clone(), payments.clone());
     Ok(ModelClients::new()
         .openai_endpoint(&endpoint, layer)
+        .models(models)
         .notices(move || notices.notices())
         .status(move || status.status())
-        .panel("/spend", "show or hide what models have spent", move || payments.panel()))
+        .panel("/spend", "show or hide what models have spent", move || {
+            payments.panel()
+        }))
+}
+
+fn served_models(endpoint: &str) -> Result<Vec<Model>> {
+    let url = format!("{endpoint}/models");
+    let body = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(async { reqwest::get(&url).await?.error_for_status()?.bytes().await })
+        .map_err(|error| format!("listing models at {url}: {error}"))?;
+    let listing: Value = serde_json::from_slice(&body)?;
+    let mut models = Vec::new();
+    for entry in listing["data"]
+        .as_array()
+        .ok_or_else(|| format!("{url} returned no data list"))?
+    {
+        let model = entry["id"]
+            .as_str()
+            .ok_or_else(|| format!("{url} listed a model without an id"))?
+            .parse::<Model>()?;
+        if !models.contains(&model) {
+            models.push(model);
+        }
+    }
+    if models.is_empty() {
+        return Err(format!("{url} lists no models").into());
+    }
+    Ok(models)
 }
 
 fn session_slot(origin: &str) -> Result<String> {
@@ -746,10 +795,17 @@ fn session_slot(origin: &str) -> Result<String> {
     let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
     let dir = std::path::Path::new(&home).join(".tempo/wallet/mpp-sessions");
     std::fs::create_dir_all(&dir)?;
-    let key: String = origin.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+    let key: String = origin
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
     for slot in 0..64 {
         let lock = dir.join(format!("{key}-{slot}.lock"));
-        let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(lock)?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(lock)?;
         if file.try_lock().is_ok() {
             std::mem::forget(file);
             return Ok(slot.to_string());
