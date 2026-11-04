@@ -701,12 +701,30 @@ fn endpoint_clients(url: &str) -> Result<(ModelClients, Option<(TempoSessionProv
         false => format!("https://{url}/v1"),
     };
     let (models, chain) = endpoint_terms(&endpoint)?;
-    let currency = match chain {
+    let default = match chain {
         CHAIN_ID => USDC,
         TESTNET_CHAIN_ID => PATH_USD,
         other => {
             return Err(format!(
                 "{endpoint} takes payment on chain {other}, neither Tempo mainnet nor testnet"
+            )
+            .into());
+        }
+    };
+    let default: Address = default.parse()?;
+    let wanted = std::env::var("MPP_CURRENCY")
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    let currency: Address = match wanted.as_str() {
+        "" => default,
+        "mach" => machine_token::token(chain).ok_or("MACH is not deployed on this network")?,
+        "usdc.e" | "usdc" if chain == CHAIN_ID => USDC.parse()?,
+        "pathusd" if chain != CHAIN_ID => PATH_USD.parse()?,
+        address if address.starts_with("0x") => address.parse()?,
+        other => {
+            return Err(format!(
+                "MPP_CURRENCY must be mach, usdc.e (mainnet), pathusd (testnet) or a token address, not {other}"
             )
             .into());
         }
@@ -719,7 +737,7 @@ fn endpoint_clients(url: &str) -> Result<(ModelClients, Option<(TempoSessionProv
     let wallet = TempoAccountsProvider::from_default_store()
         .map_err(|error| format!("{error}; log in with `tempo wallet login`"))?
         .with_expected_chain_id(chain)
-        .with_preferred_currency(currency.parse()?)
+        .with_preferred_currency(currency)
         .with_session_prepaid_requests(PREPAID_REQUESTS)
         .with_session_events(payments.events.clone())
         .with_session_default_deposit(amount("NANOCODE_MPP_DEPOSIT", MACH)?)
@@ -733,6 +751,12 @@ fn endpoint_clients(url: &str) -> Result<(ModelClients, Option<(TempoSessionProv
     let origin = reqwest::Url::parse(&endpoint)?
         .origin()
         .ascii_serialization();
+    // A channel holds one token: another currency gets its own channels and slot locks, so a MACH
+    // run never reuses (or closes) the USDC.e channel of the same endpoint.
+    let origin = match currency == default {
+        true => origin,
+        false => format!("{origin}~{wanted}"),
+    };
     let namespace = match session_slot(&origin)?.as_str() {
         "0" => origin,
         session => format!("{origin}#{session}"),
