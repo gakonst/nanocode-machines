@@ -411,9 +411,16 @@ impl Payments {
             })
             .collect();
         let rate = u128::try_from(window).unwrap_or(0) * 60 / WATERFALL.as_secs() as u128;
+        // The rate sums every service: name their token when they share one, else USD (all are 1:1).
+        let unit = match services.first() {
+            Some((_, first)) if services.iter().all(|(_, s)| s.symbol == first.symbol) => {
+                first.symbol.as_str()
+            }
+            _ => "USD",
+        };
         Some(Panel {
             title: format!(
-                "⚡ {} streamed · {calls} paid calls · {} services · {} MACH/min",
+                "⚡ {} streamed · {calls} paid calls · {} services · {} {unit}/min",
                 ledger.totals(),
                 services.len(),
                 mach(rate)
