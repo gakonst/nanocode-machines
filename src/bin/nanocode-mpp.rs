@@ -37,6 +37,7 @@ const MERCATOR: &str = "https://mercator.sh/mcp";
 const GATEWAY: &str = "https://gateway.tempo-dev.workers.dev/mcp";
 const GATEWAY_ORIGIN: &str = "https://gateway.tempo-dev.workers.dev";
 const TEMPO_SERVICES: &str = "*.mpp.tempo.xyz";
+const TESTNET_CHAIN_ID: u64 = 42431;
 const MACH: u128 = 1_000_000;
 const PREPAID_REQUESTS: u32 = 2;
 const WATERFALL: Duration = Duration::from_secs(30);
@@ -699,12 +700,15 @@ fn endpoint_clients(url: &str) -> Result<ModelClients> {
         true => format!("{url}/v1"),
         false => format!("https://{url}/v1"),
     };
-    let models = served_models(&endpoint)?;
-    let (chain, currency) = match std::env::var("MPP_NETWORK").as_deref() {
-        Ok("mainnet") => (CHAIN_ID, USDC),
-        Ok("testnet") | Err(_) => (42431, PATH_USD),
-        Ok(other) => {
-            return Err(format!("MPP_NETWORK must be mainnet or testnet, not {other}").into());
+    let (models, chain) = endpoint_terms(&endpoint)?;
+    let currency = match chain {
+        CHAIN_ID => USDC,
+        TESTNET_CHAIN_ID => PATH_USD,
+        other => {
+            return Err(format!(
+                "{endpoint} takes payment on chain {other}, neither Tempo mainnet nor testnet"
+            )
+            .into());
         }
     };
     let host = reqwest::Url::parse(&endpoint)?
@@ -759,13 +763,68 @@ fn endpoint_clients(url: &str) -> Result<ModelClients> {
         }))
 }
 
-fn served_models(endpoint: &str) -> Result<Vec<Model>> {
-    let url = format!("{endpoint}/models");
-    let body = tokio::runtime::Builder::new_current_thread()
+fn endpoint_terms(endpoint: &str) -> Result<(Vec<Model>, u64)> {
+    let pinned = match std::env::var("MPP_NETWORK").as_deref() {
+        Ok("mainnet") => Some(CHAIN_ID),
+        Ok("testnet") => Some(TESTNET_CHAIN_ID),
+        Ok(other) => {
+            return Err(format!("MPP_NETWORK must be mainnet or testnet, not {other}").into());
+        }
+        Err(_) => None,
+    };
+    let client = reqwest::Client::new();
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?
-        .block_on(async { reqwest::get(&url).await?.error_for_status()?.bytes().await })
-        .map_err(|error| format!("listing models at {url}: {error}"))?;
+        .block_on(async {
+            let models = served_models(&client, endpoint).await?;
+            let chain = match pinned {
+                Some(chain) => chain,
+                None => challenge_chain(&client, endpoint, models[0]).await?,
+            };
+            Ok((models, chain))
+        })
+}
+
+async fn challenge_chain(client: &reqwest::Client, endpoint: &str, model: Model) -> Result<u64> {
+    let url = format!("{endpoint}/responses");
+    let response = client
+        .post(&url)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(serde_json::json!({ "model": model.as_str() }).to_string())
+        .send()
+        .await
+        .map_err(|error| format!("asking {url} for its payment terms: {error}"))?;
+    let challenge = response
+        .headers()
+        .get_all(reqwest::header::WWW_AUTHENTICATE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find_map(|value| mpp::parse_www_authenticate(value).ok())
+        .ok_or_else(|| {
+            format!(
+                "{url} answered {} without a payment challenge",
+                response.status()
+            )
+        })?;
+    challenge.request.decode_value()?["methodDetails"]["chainId"]
+        .as_u64()
+        .ok_or_else(|| format!("{url}'s payment challenge names no chain").into())
+}
+
+async fn served_models(client: &reqwest::Client, endpoint: &str) -> Result<Vec<Model>> {
+    let url = format!("{endpoint}/models");
+    let body = async {
+        client
+            .get(&url)
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await
+    }
+    .await
+    .map_err(|error| format!("listing models at {url}: {error}"))?;
     let listing: Value = serde_json::from_slice(&body)?;
     let mut models = Vec::new();
     for entry in listing["data"]
