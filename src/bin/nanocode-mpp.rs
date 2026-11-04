@@ -733,7 +733,10 @@ fn endpoint_clients(url: &str) -> Result<(ModelClients, Option<(TempoSessionProv
         .host_str()
         .unwrap_or_default()
         .to_owned();
-    let payments = Payments::new(Address::ZERO, vec![host.clone()]);
+    let payments = Payments::new(
+        machine_token::token(chain).unwrap_or(Address::ZERO),
+        vec![host.clone()],
+    );
     let wallet = TempoAccountsProvider::from_default_store()
         .map_err(|error| format!("{error}; log in with `tempo wallet login`"))?
         .with_expected_chain_id(chain)
