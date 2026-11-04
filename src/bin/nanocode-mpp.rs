@@ -693,7 +693,7 @@ fn mach(amount: u128) -> String {
     format!("{}.{:06}", amount / MACH, amount % MACH)
 }
 
-fn endpoint_clients(url: &str) -> Result<ModelClients> {
+fn endpoint_clients(url: &str) -> Result<(ModelClients, Option<(TempoSessionProvider, String)>)> {
     nanocode::codex::transport::install_default_rustls_crypto_provider();
     let url = url.trim_end_matches('/');
     let endpoint = match url.contains("://") {
@@ -751,16 +751,52 @@ fn endpoint_clients(url: &str) -> Result<ModelClients> {
         .lock()
         .unwrap()
         .sessions
-        .insert(host, session);
+        .insert(host, session.clone());
+    let close = match std::env::var("MPP_KEEP_SESSION").as_deref() {
+        Ok("1") | Ok("true") => None,
+        _ => Some((session, format!("{endpoint}/responses"))),
+    };
     let (notices, status) = (payments.clone(), payments.clone());
-    Ok(ModelClients::new()
+    let clients = ModelClients::new()
         .openai_endpoint(&endpoint, layer)
         .models(models)
         .notices(move || notices.notices())
         .status(move || status.status())
         .panel("/spend", "show or hide what models have spent", move || {
             payments.panel()
-        }))
+        });
+    Ok((clients, close))
+}
+
+fn close_session(session: TempoSessionProvider, url: String) {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => return eprintln!("nanocode-mpp: closing the session: {error}"),
+    };
+    let client = reqwest::Client::new();
+    for _ in 0..12 {
+        match runtime.block_on(session.close(&client, &url)) {
+            Ok(Some(receipt)) => {
+                return eprintln!(
+                    "nanocode-mpp: closed the session cooperatively (receipt {})",
+                    receipt.reference
+                );
+            }
+            Ok(None) => return,
+            Err(error) if error.to_string().contains(" 409 ") => {
+                runtime.block_on(tokio::time::sleep(Duration::from_secs(5)));
+            }
+            Err(error) => {
+                return eprintln!(
+                    "nanocode-mpp: closing the session: {error}; MPP_KEEP_SESSION=1 keeps it open"
+                );
+            }
+        }
+    }
+    eprintln!("nanocode-mpp: the session stayed busy; the next run closes it");
 }
 
 fn endpoint_terms(endpoint: &str) -> Result<(Vec<Model>, u64)> {
@@ -937,10 +973,16 @@ fn clients() -> Result<ModelClients> {
 fn main() -> ExitCode {
     let clients = match std::env::var("MPP_ENDPOINT") {
         Ok(url) if !url.is_empty() => endpoint_clients(&url),
-        _ => clients(),
+        _ => clients().map(|clients| (clients, None)),
     };
     match clients {
-        Ok(clients) => nanocode_cli::run_with(clients),
+        Ok((clients, close)) => {
+            let code = nanocode_cli::run_with(clients);
+            if let Some((session, url)) = close {
+                close_session(session, url);
+            }
+            code
+        }
         Err(error) => {
             eprintln!("nanocode-mpp: {error}");
             ExitCode::FAILURE
