@@ -38,6 +38,8 @@ const GATEWAY: &str = "https://gateway.tempo-dev.workers.dev/mcp";
 const GATEWAY_ORIGIN: &str = "https://gateway.tempo-dev.workers.dev";
 const TEMPO_SERVICES: &str = "*.mpp.tempo.xyz";
 const TESTNET_CHAIN_ID: u64 = 42431;
+/// Open USD on Tempo mainnet (viem `tokens/ousd`).
+const OUSD: &str = "0x20c0000000000000000000006a37DA5C996874BE";
 const MACH: u128 = 1_000_000;
 const PREPAID_REQUESTS: u32 = 2;
 const WATERFALL: Duration = Duration::from_secs(30);
@@ -674,6 +676,7 @@ fn symbol(currency: &str, machine: Address) -> String {
         Ok(currency) if currency == machine => "MACH".to_owned(),
         Ok(currency) if USDC.parse() == Ok(currency) => "USDC.e".to_owned(),
         Ok(currency) if PATH_USD.parse() == Ok(currency) => "pathUSD".to_owned(),
+        Ok(currency) if OUSD.parse() == Ok(currency) => "OUSD".to_owned(),
         _ => currency.to_owned(),
     }
 }
@@ -727,11 +730,12 @@ fn endpoint_clients(url: &str) -> Result<(ModelClients, Option<(TempoSessionProv
         "" => default,
         "mach" => machine_token::token(chain).ok_or("MACH is not deployed on this network")?,
         "usdc.e" | "usdc" if chain == CHAIN_ID => USDC.parse()?,
+        "ousd" if chain == CHAIN_ID => OUSD.parse()?,
         "pathusd" if chain != CHAIN_ID => PATH_USD.parse()?,
         address if address.starts_with("0x") => address.parse()?,
         other => {
             return Err(format!(
-                "MPP_CURRENCY must be mach, usdc.e (mainnet), pathusd (testnet) or a token address, not {other}"
+                "MPP_CURRENCY must be mach, usdc.e or ousd (mainnet), pathusd (testnet) or a token address, not {other}"
             )
             .into());
         }
