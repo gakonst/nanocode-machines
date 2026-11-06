@@ -316,7 +316,7 @@ impl Payments {
     ) -> Result<TempoAccountsProvider> {
         let wallet = wallet.clone().with_sqlite_session_store(service)?;
         let host = service.host_str().unwrap_or_default().to_owned();
-        let session = wallet.session()?;
+        let session = wallet.session_for(service.as_str())?;
         self.ledger.lock().unwrap().sessions.insert(host, session);
         Ok(wallet)
     }
@@ -783,7 +783,7 @@ fn endpoint_clients(url: &str) -> Result<(ModelClients, Option<(TempoSessionProv
         },
     )?;
     layer.wallet = layer.wallet.clone().with_session_store(Arc::new(store));
-    let session = layer.wallet.session()?;
+    let session = layer.wallet.session_for(&endpoint)?;
     payments
         .ledger
         .lock()

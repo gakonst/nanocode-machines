@@ -12,7 +12,7 @@ publish = false
 async-trait = "0.1.89"
 nanocode = { git = "https://github.com/gakonst/nanocode", rev = "b7346e07019ac7adb1449528c120664e37d26056" }
 nanocode-cli = { git = "https://github.com/gakonst/nanocode", rev = "b7346e07019ac7adb1449528c120664e37d26056" }
-mpp = { git = "https://github.com/tempoxyz/mpp-rs", rev = "aa9c1e21640f3bcb3c5f6dc3922a209c560c61d9", default-features = false, features = ["client", "tempo", "sqlite", "forward-proxy", "reqwest-rustls-tls-no-provider"] }
+mpp = { git = "https://github.com/tempoxyz/mpp-rs", rev = "1da9599f7903041195eb9d575c99c1cb6069d296", default-features = false, features = ["client", "tempo", "sqlite", "forward-proxy", "reqwest-rustls-tls-no-provider"] }
 futures-util = { version = "0.3.31", default-features = false, features = ["std"] }
 http = "1.3.1"
 reqwest = { version = "0.13.4", default-features = false, features = ["stream"] }
