@@ -38,6 +38,8 @@ const GATEWAY: &str = "https://gateway.tempo-dev.workers.dev/mcp";
 const GATEWAY_ORIGIN: &str = "https://gateway.tempo-dev.workers.dev";
 const TEMPO_SERVICES: &str = "*.mpp.tempo.xyz";
 const TESTNET_CHAIN_ID: u64 = 42431;
+/// Open USD on Tempo mainnet (viem `tokens/ousd`).
+const OUSD: &str = "0x20c0000000000000000000006a37DA5C996874BE";
 const MACH: u128 = 1_000_000;
 const PREPAID_REQUESTS: u32 = 2;
 const WATERFALL: Duration = Duration::from_secs(30);
@@ -411,9 +413,16 @@ impl Payments {
             })
             .collect();
         let rate = u128::try_from(window).unwrap_or(0) * 60 / WATERFALL.as_secs() as u128;
+        // The rate sums every service: name their token when they share one, else USD (all are 1:1).
+        let unit = match services.first() {
+            Some((_, first)) if services.iter().all(|(_, s)| s.symbol == first.symbol) => {
+                first.symbol.as_str()
+            }
+            _ => "USD",
+        };
         Some(Panel {
             title: format!(
-                "⚡ {} streamed · {calls} paid calls · {} services · {} MACH/min",
+                "⚡ {} streamed · {calls} paid calls · {} services · {} {unit}/min",
                 ledger.totals(),
                 services.len(),
                 mach(rate)
@@ -667,6 +676,7 @@ fn symbol(currency: &str, machine: Address) -> String {
         Ok(currency) if currency == machine => "MACH".to_owned(),
         Ok(currency) if USDC.parse() == Ok(currency) => "USDC.e".to_owned(),
         Ok(currency) if PATH_USD.parse() == Ok(currency) => "pathUSD".to_owned(),
+        Ok(currency) if OUSD.parse() == Ok(currency) => "OUSD".to_owned(),
         _ => currency.to_owned(),
     }
 }
@@ -693,7 +703,7 @@ fn mach(amount: u128) -> String {
     format!("{}.{:06}", amount / MACH, amount % MACH)
 }
 
-fn endpoint_clients(url: &str) -> Result<ModelClients> {
+fn endpoint_clients(url: &str) -> Result<(ModelClients, Option<(TempoSessionProvider, String)>)> {
     nanocode::codex::transport::install_default_rustls_crypto_provider();
     let url = url.trim_end_matches('/');
     let endpoint = match url.contains("://") {
@@ -701,7 +711,7 @@ fn endpoint_clients(url: &str) -> Result<ModelClients> {
         false => format!("https://{url}/v1"),
     };
     let (models, chain) = endpoint_terms(&endpoint)?;
-    let currency = match chain {
+    let default = match chain {
         CHAIN_ID => USDC,
         TESTNET_CHAIN_ID => PATH_USD,
         other => {
@@ -711,15 +721,37 @@ fn endpoint_clients(url: &str) -> Result<ModelClients> {
             .into());
         }
     };
+    let default: Address = default.parse()?;
+    let wanted = std::env::var("MPP_CURRENCY")
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    let currency: Address = match wanted.as_str() {
+        "" => default,
+        "mach" => machine_token::token(chain).ok_or("MACH is not deployed on this network")?,
+        "usdc.e" | "usdc" if chain == CHAIN_ID => USDC.parse()?,
+        "ousd" if chain == CHAIN_ID => OUSD.parse()?,
+        "pathusd" if chain != CHAIN_ID => PATH_USD.parse()?,
+        address if address.starts_with("0x") => address.parse()?,
+        other => {
+            return Err(format!(
+                "MPP_CURRENCY must be mach, usdc.e or ousd (mainnet), pathusd (testnet) or a token address, not {other}"
+            )
+            .into());
+        }
+    };
     let host = reqwest::Url::parse(&endpoint)?
         .host_str()
         .unwrap_or_default()
         .to_owned();
-    let payments = Payments::new(Address::ZERO, vec![host.clone()]);
+    let payments = Payments::new(
+        machine_token::token(chain).unwrap_or(Address::ZERO),
+        vec![host.clone()],
+    );
     let wallet = TempoAccountsProvider::from_default_store()
         .map_err(|error| format!("{error}; log in with `tempo wallet login`"))?
         .with_expected_chain_id(chain)
-        .with_preferred_currency(currency.parse()?)
+        .with_preferred_currency(currency)
         .with_session_prepaid_requests(PREPAID_REQUESTS)
         .with_session_events(payments.events.clone())
         .with_session_default_deposit(amount("NANOCODE_MPP_DEPOSIT", MACH)?)
@@ -733,6 +765,12 @@ fn endpoint_clients(url: &str) -> Result<ModelClients> {
     let origin = reqwest::Url::parse(&endpoint)?
         .origin()
         .ascii_serialization();
+    // A channel holds one token: another currency gets its own channels and slot locks, so a MACH
+    // run never reuses (or closes) the USDC.e channel of the same endpoint.
+    let origin = match currency == default {
+        true => origin,
+        false => format!("{origin}~{wanted}"),
+    };
     let namespace = match session_slot(&origin)?.as_str() {
         "0" => origin,
         session => format!("{origin}#{session}"),
@@ -751,16 +789,52 @@ fn endpoint_clients(url: &str) -> Result<ModelClients> {
         .lock()
         .unwrap()
         .sessions
-        .insert(host, session);
+        .insert(host, session.clone());
+    let close = match std::env::var("MPP_KEEP_SESSION").as_deref() {
+        Ok("1") | Ok("true") => None,
+        _ => Some((session, format!("{endpoint}/responses"))),
+    };
     let (notices, status) = (payments.clone(), payments.clone());
-    Ok(ModelClients::new()
+    let clients = ModelClients::new()
         .openai_endpoint(&endpoint, layer)
         .models(models)
         .notices(move || notices.notices())
         .status(move || status.status())
         .panel("/spend", "show or hide what models have spent", move || {
             payments.panel()
-        }))
+        });
+    Ok((clients, close))
+}
+
+fn close_session(session: TempoSessionProvider, url: String) {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => return eprintln!("nanocode-mpp: closing the session: {error}"),
+    };
+    let client = reqwest::Client::new();
+    for _ in 0..12 {
+        match runtime.block_on(session.close(&client, &url)) {
+            Ok(Some(receipt)) => {
+                return eprintln!(
+                    "nanocode-mpp: closed the session cooperatively (receipt {})",
+                    receipt.reference
+                );
+            }
+            Ok(None) => return,
+            Err(error) if error.to_string().contains(" 409 ") => {
+                runtime.block_on(tokio::time::sleep(Duration::from_secs(5)));
+            }
+            Err(error) => {
+                return eprintln!(
+                    "nanocode-mpp: closing the session: {error}; MPP_KEEP_SESSION=1 keeps it open"
+                );
+            }
+        }
+    }
+    eprintln!("nanocode-mpp: the session stayed busy; the next run closes it");
 }
 
 fn endpoint_terms(endpoint: &str) -> Result<(Vec<Model>, u64)> {
@@ -937,10 +1011,16 @@ fn clients() -> Result<ModelClients> {
 fn main() -> ExitCode {
     let clients = match std::env::var("MPP_ENDPOINT") {
         Ok(url) if !url.is_empty() => endpoint_clients(&url),
-        _ => clients(),
+        _ => clients().map(|clients| (clients, None)),
     };
     match clients {
-        Ok(clients) => nanocode_cli::run_with(clients),
+        Ok((clients, close)) => {
+            let code = nanocode_cli::run_with(clients);
+            if let Some((session, url)) = close {
+                close_session(session, url);
+            }
+            code
+        }
         Err(error) => {
             eprintln!("nanocode-mpp: {error}");
             ExitCode::FAILURE
